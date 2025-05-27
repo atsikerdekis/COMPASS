@@ -1,0 +1,28 @@
+name: COMPASS
+channels:
+  - conda-forge
+channel_priority: strict
+dependencies:
+  # Base languages
+  - r-base
+  - python >=3.9
+
+  # R libraries
+  - r-oce
+  - r-ocedata
+  - r-sf
+  - r-raster
+  - r-ncdf4
+  - r-colourvalues
+  - r-colorspace
+  - r-viridis
+
+  # System tools
+  - nco
+
+  # Python packages
+  - pandas
+  - ecmwf-api-client
+  - python-dateutil
+  - tenacity
+

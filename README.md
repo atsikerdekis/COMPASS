@@ -1,5 +1,4 @@
-<p align="center"> <img src="assets/COMPASS_logo_dark.png" alt="PEF Logo" width="150" height="150"> </p>
-<h1 align="center">COMPosition Analysis Software for Simulations</h1>
+<p align="center"> <img src="assets/COMPASS_logo_dark.png" alt="PEF Logo" width="300" height="300"> </p>
 
 This software was developed by Athanasios Tsikerdekis (KNMI) to compare experiments of IFS-COMPO.
 

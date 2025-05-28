@@ -1,6 +1,6 @@
 <p align="center"> <img src="assets/COMPASS_logo_dark.png" alt="COMPASS Logo" width="400" height="400"> </p>
 
-This software was developed in the framework of the cams2\_35\_bis (ECWMF) by [Athanasios Tsikerdekis (KNMI)](thanos.tsikerdekis@knmi.nl) to compare experiments of IFS-COMPO.
+This software was developed in the framework of the cams2\_35\_bis (ECWMF) by [Athanasios Tsikerdekis (KNMI)](mailto:thanos.tsikerdekis@knmi.nl) to compare experiments of IFS-COMPO.
 
 ## 📜 Attribution
 

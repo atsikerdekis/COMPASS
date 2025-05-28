@@ -1,14 +1,10 @@
-<p align="center"> <img src="assets/COMPASS_logo_dark.png" alt="PEF Logo" width="400" height="400"> </p>
+<p align="center"> <img src="assets/COMPASS_logo_dark.png" alt="COMPASS Logo" width="400" height="400"> </p>
 
 This software was developed in the framework of the cams2\_35\_bis funded by ECWMF by Athanasios Tsikerdekis (KNMI) to compare experiments of IFS-COMPO.
 
 ## 📜 Attribution
 
-...
-
-## 📥 Download Test Data
-
-...
+[COMPosition Analysis Software for Simulations (COMPASS)](https://github.com/atsikerdekis/COMPASS)
 
 ## 🛠 Environment
 
@@ -21,17 +17,7 @@ This software was developed in the framework of the cams2\_35\_bis funded by ECW
 3. Activate the environment:  
    `mamba activate COMPASS`
 
-## ⚙️ Installation
+## ▶️ Running
 
-
-Modify the following paths before running the code:  
-- `00.start.R` → See variables under section `INPUT` and variable `path_code`
-- `01.init.R`  → See all `path_*` variables 
-
-## ▶️ Running PEF
-
-Run the script:  
-`Rscript 00.start.R` 
-
-
+`Rscript 00.submit.R b2qz AER b2ri HAM 20181201 20181202` 
 

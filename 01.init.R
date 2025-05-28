@@ -1,14 +1,19 @@
 ############
+### USER ###
+############
+username <- system("whoami", intern = TRUE)
+
+############
 ### PATH ###
 ############
-path_function <- "/perm/nktt/cams2_35/COMPASS/code/function/"
-path_plot     <- "/perm/nktt/cams2_35/COMPASS/plot/"
-path_log      <- "/perm/nktt/cams2_35/COMPASS/log/"
-path_data     <- "/scratch/nktt/cams2_35/data/"
-path_temp     <- "/scratch/nktt/cams2_35/temp/"
-path_NCO      <- "/etc/ecmwf/nfs/dh1_perm_b/nktt/miniforge3/envs/COMPASS/bin/"
-path_PYTHON   <- "/etc/ecmwf/nfs/dh1_perm_b/nktt/miniforge3/envs/COMPASS/bin/"
-path_R        <- "/etc/ecmwf/nfs/dh1_perm_b/nktt/miniforge3/envs/COMPASS/bin/"
+path_function <- paste0("/perm/",username,"/cams2_35/COMPASS/code/function/")
+path_plot     <- paste0("/perm/",username,"/cams2_35/COMPASS/plot/")
+path_log      <- paste0("/perm/",username,"/cams2_35/COMPASS/log/")
+path_data     <- paste0("/scratch/",username,"/cams2_35/data/")
+path_temp     <- paste0("/scratch/",username,"/cams2_35/temp/")
+path_NCO      <- paste0("/etc/ecmwf/nfs/dh1_perm_b/",username,"/miniforge3/envs/COMPASS/bin/")
+path_PYTHON   <- paste0("/etc/ecmwf/nfs/dh1_perm_b/",username,"/miniforge3/envs/COMPASS/bin/")
+path_R        <- paste0("/etc/ecmwf/nfs/dh1_perm_b/",username,"/miniforge3/envs/COMPASS/bin/")
 
 ###################
 ### CREATE PATH ###

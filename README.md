@@ -1,6 +1,6 @@
-<p align="center"> <img src="assets/COMPASS_logo_dark.png" alt="PEF Logo" width="300" height="300"> </p>
+<p align="center"> <img src="assets/COMPASS_logo_dark.png" alt="PEF Logo" width="400" height="400"> </p>
 
-This software was developed by Athanasios Tsikerdekis (KNMI) to compare experiments of IFS-COMPO.
+This software was developed in the framework of the cams2\_35\_bis funded by ECWMF by Athanasios Tsikerdekis (KNMI) to compare experiments of IFS-COMPO.
 
 ## 📜 Attribution
 

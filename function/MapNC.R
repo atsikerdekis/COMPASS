@@ -24,8 +24,8 @@ MapNC <- function(
     field_show_legend=FALSE,
     field_units="",
     legend_units_potition=1,
-    field_legend_cex=2.5,
-    field_legend_mai_right=0.85,
+    field_legend_cex=3.5,
+    field_legend_mai_right=1.5,
     field_legend_mai_top=0.5,
     field_show_box=FALSE,
     
@@ -588,14 +588,16 @@ MapNC <- function(
     rect(user[1], user[3], user[2], user[4], col=col_ocean, border=NA)
     ### Global field value mean
     if (field_value_mean_global==T) {
-      points_x <- +0.86
-      points_y <- -0.90
-      points(points_x,points_y,col="black", pch=15, cex=20)
-      points(points_x,points_y,col="white", pch=15, cex=19)
-      text(points_x,points_y,paste0("MN\n",format(mean(field_value,na.rm=T), scientific=TRUE, digits=2)),col="black", pch=15, cex=2.2, family="Century Gothic")
-      points(points_x+0.15,points_y,col="black", pch=15, cex=20)
-      points(points_x+0.15,points_y,col="white", pch=15, cex=19)
-      text(points_x+0.15,points_y,paste0("SD\n",format(sd(field_value,na.rm=T), scientific=TRUE, digits=2)),col="black", pch=15, cex=2.2, family="Century Gothic")
+      points_x <- -0.85
+      points_y <- -0.88
+      #points(points_x,points_y,col="black", pch=15, cex=30)
+      #points(points_x,points_y,col="white", pch=15, cex=29)
+      text(points_x,points_y,paste0("MN\n",format(mean(field_value,na.rm=T), scientific=TRUE, digits=2)),col="black", pch=15, cex=4.0, family="Century Gothic")
+      points_x <- +0.85
+      points_y <- -0.88
+      #points(points_x,points_y,col="black", pch=15, cex=30)
+      #points(points_x,points_y,col="white", pch=15, cex=29)
+      text(points_x,points_y,paste0("SD\n",format(sd(field_value,na.rm=T), scientific=TRUE, digits=2)),col="black", pch=15, cex=4.0, family="Century Gothic")
     }
     par(new=TRUE)
     par(new=TRUE)

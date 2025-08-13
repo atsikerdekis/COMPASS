@@ -16,7 +16,7 @@ expname2  <- args[3]
 exptype2  <- args[4]
 sDate     <- args[5]
 eDate     <- args[6]
-path_code <- paste0(dirname(normalizePath(sub("--file=", "", args[grep("--file=", args)]))), "/")
+path_code <- paste0(dirname(normalizePath(sub("--file=", "", commandArgs(FALSE)[grep("--file=", commandArgs(FALSE))]))), "/")
 source(paste0(path_code,"01.init.R"))
 
 #############

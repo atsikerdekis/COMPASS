@@ -22,21 +22,54 @@ expname2  <- args[3]
 exptype2  <- args[4]
 sDate     <- args[5]
 eDate     <- args[6]
-path_code <- paste0(dirname(normalizePath(sub("--file=", "", args[grep("--file=", args)]))), "/")
+seqDate   <- format(seq.Date(from=as.Date(sDate, format="%Y%m%d"), to=as.Date(eDate, format="%Y%m%d"), by="day"), "%Y%m%d")
+path_code <- paste0(dirname(normalizePath(sub("--file=", "", commandArgs(FALSE)[grep("--file=", commandArgs(FALSE))]))), "/")
 source(paste0(path_code,"config.R"))
 source(paste0(path_code,"01.init.R"))
 
+if (1==2) {
 ########################
 ### CHECK & DOWNLOAD ###
 ########################
-message(paste0("---> Downloading ",expname1," (",exptype1,")..."))
-system(paste0(path_PYTHON,"python ",path_code,"03.download_sfc.py ",expname1," ",sDate," ",eDate," ",path_data))
-if (exptype1 == "HAM") { system(paste0(path_PYTHON,"python ",path_code,"03.download_pl_M7.py ",expname1," ",sDate," ",eDate," ",path_data)) }
-if (exptype1 == "AER") { system(paste0(path_PYTHON,"python ",path_code,"03.download_pl.py ",expname1," ",sDate," ",eDate," ",path_data)) }
-message(paste0("---> Downloading ",expname2," (",exptype2,")..."))
-system(paste0(path_PYTHON,"python ",path_code,"03.download_sfc.py ",expname2," ",sDate," ",eDate," ",path_data))
-if (exptype2 == "HAM") { system(paste0(path_PYTHON,"python ",path_code,"03.download_pl_M7.py ",expname2," ",sDate," ",eDate," ",path_data)) }
-if (exptype2 == "AER") { system(paste0(path_PYTHON,"python ",path_code,"03.download_pl.py ",expname2," ",sDate," ",eDate," ",path_data)) }
+for (d in 1:length(seqDate)) {
+  for (e in 1:2) {
+    if (e == 1) {expname=expname1;exptype=exptype1}
+    if (e == 2) {expname=expname2;exptype=exptype2}
+    message(paste0("---> Downloading ",expname," (",exptype,")..."))
+    # Download surface (sfc)
+    SubmitJob(
+      JOB_name     = paste0("download_sfc_",expname,"_",seqDate[d]),
+      JOB_out      = paste0(path_log,"download_sfc_",expname,"_",seqDate[d],".out"),
+      JOB_err      = paste0(path_log,"download_sfc_",expname,"_",seqDate[d],".err"),
+      PATH_program = paste0(path_PYTHON,"python"),
+      PATH_script  = paste0(path_code,"03.download_sfc.py"),
+      SCRIPT_flag  = paste0(expname," ",seqDate[d]," ",path_data)
+    )
+    # Download pressure level (HAM)
+    if (exptype == "HAM") {
+        SubmitJob(
+          JOB_name     = paste0("download_pl_M7_",expname,"_",seqDate[d]),
+          JOB_out      = paste0(path_log,"download_pl_M7_",expname,"_",seqDate[d],".out"),
+          JOB_err      = paste0(path_log,"download_pl_M7_",expname,"_",seqDate[d],".err"),
+          PATH_program = paste0(path_PYTHON,"python"),
+          PATH_script  = paste0(path_code,"03.download_pl_M7.py"),
+          SCRIPT_flag  = paste0(expname," ",seqDate[d]," ",path_data)
+      )
+    }
+    # Download pressure level (AER)
+    if (exptype == "AER") {
+        SubmitJob( 
+          JOB_name     = paste0("download_pl_",expname,"_",seqDate[d]),
+          JOB_out      = paste0(path_log,"download_pl_",expname,"_",seqDate[d],".out"),
+          JOB_err      = paste0(path_log,"download_pl_",expname,"_",seqDate[d],".err"),
+          PATH_program = paste0(path_PYTHON,"python"),
+          PATH_script  = paste0(path_code,"03.download_pl.py"),
+          SCRIPT_flag  = paste0(expname," ",seqDate[d]," ",path_data)
+      )   
+    } 
+  } # END LOOP experiments (e)
+} # END LOOP dates (d)
+}
 
 ############
 ### PLOT ###

@@ -12,6 +12,7 @@ path_log      <- paste0("/perm/",username,"/cams2_35/COMPASS/log/")
 path_data     <- paste0("/scratch/",username,"/cams2_35/data/")
 path_temp     <- paste0("/scratch/",username,"/cams2_35/temp/")
 path_NCO      <- paste0("/etc/ecmwf/nfs/dh1_perm_b/",username,"/miniforge3/envs/COMPASS/bin/")
+path_CDO      <- paste0("/usr/local/apps/cdo/2.5.1/bin/")
 path_PYTHON   <- paste0("/etc/ecmwf/nfs/dh1_perm_b/",username,"/miniforge3/envs/COMPASS/bin/")
 path_R        <- paste0("/etc/ecmwf/nfs/dh1_perm_b/",username,"/miniforge3/envs/COMPASS/bin/")
 
@@ -35,6 +36,7 @@ library("ncdf4")
 source(paste0(path_function,"MapNC.R"))
 source(paste0(path_function,"get_AngstromExponent.R"))
 source(paste0(path_function,"compress.R"))
+source(paste0(path_function,"SubmitJob.R"))
 
 ############
 ### INIT ###

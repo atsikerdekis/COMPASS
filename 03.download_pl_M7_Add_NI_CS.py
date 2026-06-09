@@ -1,9 +1,6 @@
-#!/anaconda3/bin/python -u
-
-###!/anaconda3/envs/cams2_83/bin/python
-
 # Created : Thanos Tsikerdekis | Apr 2025 | Download from MARS
 # Parts of code from J.Douros and B.Mijling scripts were used and modified.
+# Designed for M7 pressure (pl) levels
 
 ####################
 ### LOAD MODULES ###
@@ -60,7 +57,7 @@ def retrieve_global(expname,expclass,day):
                 "levtype": "pl",
                 # Geopotential = 129.128 # pl
                 # Temperature  = 130.128 # pl
-                "param": "1.210/2.210/3.210/4.210/5.210/6.210/7.210/8.210/9.210/10.210/11.210/247.210/248.210/249.210/210252/210253/129.128/130.128",
+                "param": "1.212/2.212/3.212/4.212/5.212/6.212/7.212/8.212/9.212/10.212/11.212/12.212/13.212/14.212/15.212/16.212/17.212/18.212/19.212/20.212/21.212/22.212/23.212/24.212/25.212/26.212/27.212/28.212/29.212/30.212/31.212/32.212/33.212/34.212/35.212/36.212/37.212/38.212/39.212/129.128/130.128",
                 "step": "0/3/6/9/12/15/18/21",
                 "stream": "oper",
                 "time": "00",
@@ -85,20 +82,66 @@ def retrieve_global(expname,expclass,day):
     command = 'ncpdq -O -4 -L 1 ' + mytempfn + ' ' + myoutput
     subprocess.run(command, shell=True)
 
+    # RENAME M7 VARIABLES
+    command = (
+      "ncrename "
+      "-v p212001,AS_N "
+      "-v p212002,SO4_AS "
+      "-v p212003,BC_AS "
+      "-v p212004,POM_AS "
+      "-v p212005,SS_AS "
+      "-v p212006,DU_AS "
+      "-v p212007,SOA_NS "
+      "-v p212008,SOA_KS "
+      "-v p212009,SOA_AS "
+      "-v p212010,SOA_CS "
+      "-v p212011,SOA_KI "
+      "-v p212012,H2OPART "
+      "-v p212013,KI_N "
+      "-v p212014,BC_KI "
+      "-v p212015,POM_KI "
+      "-v p212016,AI_N "
+      "-v p212017,DU_AI "
+      "-v p212018,KS_N "
+      "-v p212019,SO4_KS "
+      "-v p212020,BC_KS "
+      "-v p212021,POM_KS "
+      "-v p212022,CI_N "
+      "-v p212023,DU_CI "
+      "-v p212024,CS_N "
+      "-v p212025,SO4_CS "
+      "-v p212026,BC_CS "
+      "-v p212027,POM_CS "
+      "-v p212028,SS_CS "
+      "-v p212029,DU_CS "
+      "-v p212030,NS_N "
+      "-v p212031,SO4_NS "
+      "-v p212032,ELVOC "
+      "-v p212033,ISVOC "
+      "-v p212034,MSA "
+      "-v p212035,NH4 "
+      "-v p212036,NI_AS "
+      "-v p212037,NI_CS "
+      "-v p212038,CDNC "
+      "-v p212039,ICNC "
+      + myoutput
+    )
+    subprocess.run(command, shell=True)
+
     # MIXING RATIO
-    command = "ncap2 -O -s 'MR_DU=aermr04+aermr05+aermr06;' " + myoutput + " -o " + myoutput
+    command = "ncap2 -O -s 'MR_DU=DU_AI+DU_CI+DU_AS+DU_CS;' " + myoutput + " -o " + myoutput
     subprocess.run(command, shell=True)
-    command = "ncap2 -O -s 'MR_SS=aermr01+aermr02+aermr03;' " + myoutput + " -o " + myoutput
+    command = "ncap2 -O -s 'MR_SS=SS_AS+SS_CS;' " + myoutput + " -o " + myoutput
     subprocess.run(command, shell=True)
-    command = "ncap2 -O -s 'MR_POM=aermr07+aermr08+aermr19+aermr20;' " + myoutput + " -o " + myoutput
+    command = "ncap2 -O -s 'MR_POM=POM_KI+POM_KS+POM_AS+POM_CS;' " + myoutput + " -o " + myoutput
     subprocess.run(command, shell=True)
-    command = "ncap2 -O -s 'MR_BC=aermr09+aermr10;' " + myoutput + " -o " + myoutput
+    command = "ncap2 -O -s 'MR_BC=BC_KI+BC_KS+BC_AS+BC_CS;' " + myoutput + " -o " + myoutput
     subprocess.run(command, shell=True)
-    command = "ncap2 -O -s 'MR_SO4=aermr11;' " + myoutput + " -o " + myoutput
+    command = "ncap2 -O -s 'MR_SO4=SO4_NS+SO4_KS+SO4_AS+SO4_CS;' " + myoutput + " -o " + myoutput
     subprocess.run(command, shell=True)
-    command = "ncap2 -O -s 'MR_NI=aermr16+aermr17;' " + myoutput + " -o " + myoutput
+    command = "ncap2 -O -s 'MR_NI=NI_AS+NI_CS;' " + myoutput + " -o " + myoutput
     subprocess.run(command, shell=True)
-    command = "ncap2 -O -s 'MR_AM=aermr18;' " + myoutput + " -o " + myoutput
+    command = "ncap2 -O -s 'MR_AM=NH4;' " + myoutput + " -o " + myoutput
     subprocess.run(command, shell=True)
     command = "ncap2 -O -s 'MR_AERO=MR_DU+MR_SS+MR_POM+MR_BC+MR_SO4+MR_NI+MR_AM;' " + myoutput + " -o " + myoutput
     subprocess.run(command, shell=True)

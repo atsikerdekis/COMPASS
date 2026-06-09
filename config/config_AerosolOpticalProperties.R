@@ -1,3 +1,16 @@
+### EXP settings
+expname1  <- "b2t5"     # 4 letter of the experiment name
+exptype1  <- "HAM"      # Either AER or HAM
+expclass1 <- "nl"       # Class from MARS system
+expname2  <- "it41"     # 4 letter of the experiment name
+exptype2  <- "AER"      # Either AER or HAM
+expclass2 <- "rd"       # Class from MARS system
+sDate     <- "20181201" # Starting date in the form of YYYYMMDD
+eDate     <- "20181231" # Ending date in the form of YYYYMMDD
+runtype   <- "download" # Could be either "download" or "plot"
+### DOWNLOAD settings
+NumberOfDownloadJobs <- 4 # This is per experiment!
+### PLOT settings
 plot_title     <- "Aerosol Optical Properties"
 variable_title <- c("AOD 550nm","AE 550-865nm","AAOD 550nm","SSA 550nm","MEC 550nm (AOD/Burden)") # "Mass Extinction Coefficient"
 variable_name  <- c("aod550","ae550to865","aodabs550","ssa550","mec550")

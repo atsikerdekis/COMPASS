@@ -33,10 +33,10 @@ def retrieve_global(expname,expclass,day):
     if not os.path.exists(OUT_DIR): os.makedirs(OUT_DIR)
     myoutput = OUT_DIR + "/" + DATA_NAME + "_" + daystrip + ".nc"
 
-#    # SKIP IF OUTPUT FILE ALREADY EXISTS
-#    if os.path.isfile(myoutput):
-#        print(f"File {myoutput} already exists, skipping...")
-#        return #Skip downloading if file exists
+    # SKIP IF OUTPUT FILE ALREADY EXISTS
+    if os.path.isfile(myoutput):
+        print(f"File {myoutput} already exists, skipping...")
+        return #Skip downloading if file exists
 
     # IF TEMPORARY FILE EXIST REMOVE IT
     mytempfn = TEMP_DIR + "Temp_" + DATA_NAME + "_" + day.replace('-','') + "_day_3D.nc"
@@ -44,86 +44,86 @@ def retrieve_global(expname,expclass,day):
         command = 'rm -f ' + mytempfn
         subprocess.run(command, shell=True)
 
-#    @retry(stop=stop_after_attempt(1))
-#    def retryfc():
-#        if True:
-#            print("Trying to download:",mytempfn)
-#            server = ECMWFService("mars")
-#            server.execute({
-#                "class": expclass,
-#                "date": day,
-#                "expver": expname,
-#                "levelist": "1/2/3/5/7/10/20/30/50/70/100/150/200/250/300/400/500/700/850/925/1000",
-#                "levtype": "pl",
-#                # Geopotential = 129.128 # pl
-#                # Temperature  = 130.128 # pl
-#                "param": "1.212/2.212/3.212/4.212/5.212/6.212/7.212/8.212/9.212/10.212/11.212/12.212/13.212/14.212/15.212/16.212/17.212/18.212/19.212/20.212/21.212/22.212/23.212/24.212/25.212/26.212/27.212/28.212/29.212/30.212/31.212/32.212/33.212/34.212/35.212/36.212/37.212/38.212/129.128/130.128",
-#                "step": "0/3/6/9/12/15/18/21",
-#                "stream": "oper",
-#                "time": "00",
-#                "type": "fc",
-#                "format": "netcdf",
-#                "grid": "0.7/0.7",
-#                },
-#                mytempfn)
-#            print("Apparently succeded!")
-#
-#        else:
-#            #except Exception as e:
-#            print("The following error happened while trying to download:", str(e))
-#            # If the following exception happen, do not retry
-#            if ('No available data matches request' or \
-#                    'Bad magic number') in str(e):
-#                    print("This is a special kind of error, stop retrying...")
-#                    return
-#    retryfc()
-#
-#    # COMPRESS
-#    command = 'ncpdq -O -4 -L 1 ' + mytempfn + ' ' + myoutput
-#    subprocess.run(command, shell=True)
+    @retry(stop=stop_after_attempt(1))
+    def retryfc():
+        if True:
+            print("Trying to download:",mytempfn)
+            server = ECMWFService("mars")
+            server.execute({
+                "class": expclass,
+                "date": day,
+                "expver": expname,
+                "levelist": "1/2/3/5/7/10/20/30/50/70/100/150/200/250/300/400/500/700/850/925/1000",
+                "levtype": "pl",
+                # Geopotential = 129.128 # pl
+                # Temperature  = 130.128 # pl
+                "param": "1.212/2.212/3.212/4.212/5.212/6.212/7.212/8.212/9.212/10.212/11.212/12.212/13.212/14.212/15.212/16.212/17.212/18.212/19.212/20.212/21.212/22.212/23.212/24.212/25.212/26.212/27.212/28.212/29.212/30.212/31.212/32.212/33.212/34.212/35.212/36.212/37.212/38.212/129.128/130.128",
+                "step": "0/3/6/9/12/15/18/21",
+                "stream": "oper",
+                "time": "00",
+                "type": "fc",
+                "format": "netcdf",
+                "grid": "0.7/0.7",
+                },
+                mytempfn)
+            print("Apparently succeded!")
+
+        else:
+            #except Exception as e:
+            print("The following error happened while trying to download:", str(e))
+            # If the following exception happen, do not retry
+            if ('No available data matches request' or \
+                    'Bad magic number') in str(e):
+                    print("This is a special kind of error, stop retrying...")
+                    return
+    retryfc()
+
+    # COMPRESS
+    command = 'ncpdq -O -4 -L 1 ' + mytempfn + ' ' + myoutput
+    subprocess.run(command, shell=True)
 
     # RENAME M7 VARIABLES
     command = (
-    "ncrename "
-    "-v p1.212,AS_N "
-    "-v p2.212,SO4_AS "
-    "-v p3.212,BC_AS "
-    "-v p4.212,POM_AS "
-    "-v p5.212,SS_AS "
-    "-v p6.212,DU_AS "
-    "-v p7.212,SOA_NS "
-    "-v p8.212,SOA_KS "
-    "-v p9.212,SOA_AS "
-    "-v p10.212,SOA_CS "
-    "-v p11.212,SOA_KI "
-    "-v p12.212,H2OPART "
-    "-v p13.212,KI_N "
-    "-v p14.212,BC_KI "
-    "-v p15.212,POM_KI "
-    "-v p16.212,AI_N "
-    "-v p17.212,DU_AI "
-    "-v p18.212,KS_N "
-    "-v p19.212,SO4_KS "
-    "-v p20.212,BC_KS "
-    "-v p21.212,POM_KS "
-    "-v p22.212,CI_N "
-    "-v p23.212,DU_CI "
-    "-v p24.212,CS_N "
-    "-v p25.212,SO4_CS "
-    "-v p26.212,BC_CS "
-    "-v p27.212,POM_CS "
-    "-v p28.212,SS_CS "
-    "-v p29.212,DU_CS "
-    "-v p30.212,NS_N "
-    "-v p31.212,SO4_NS "
-    "-v p32.212,ELVOC "
-    "-v p33.212,ISVOC "
-    "-v p34.212,MSA "
-    "-v p35.212,NH4 "
-    "-v p36.212,NO3_A "
-    "-v p37.212,CDNC "
-    "-v p38.212,ICNC "
-    + myoutput
+      "ncrename "
+      "-v p212001,AS_N "
+      "-v p212002,SO4_AS "
+      "-v p212003,BC_AS "
+      "-v p212004,POM_AS "
+      "-v p212005,SS_AS "
+      "-v p212006,DU_AS "
+      "-v p212007,SOA_NS "
+      "-v p212008,SOA_KS "
+      "-v p212009,SOA_AS "
+      "-v p212010,SOA_CS "
+      "-v p212011,SOA_KI "
+      "-v p212012,H2OPART "
+      "-v p212013,KI_N "
+      "-v p212014,BC_KI "
+      "-v p212015,POM_KI "
+      "-v p212016,AI_N "
+      "-v p212017,DU_AI "
+      "-v p212018,KS_N "
+      "-v p212019,SO4_KS "
+      "-v p212020,BC_KS "
+      "-v p212021,POM_KS "
+      "-v p212022,CI_N "
+      "-v p212023,DU_CI "
+      "-v p212024,CS_N "
+      "-v p212025,SO4_CS "
+      "-v p212026,BC_CS "
+      "-v p212027,POM_CS "
+      "-v p212028,SS_CS "
+      "-v p212029,DU_CS "
+      "-v p212030,NS_N "
+      "-v p212031,SO4_NS "
+      "-v p212032,ELVOC "
+      "-v p212033,ISVOC "
+      "-v p212034,MSA "
+      "-v p212035,NH4 "
+      "-v p212036,NI_AS "
+      "-v p212037,CDNC "
+      "-v p212038,ICNC "
+      + myoutput
     )
     subprocess.run(command, shell=True)
 
@@ -138,7 +138,7 @@ def retrieve_global(expname,expclass,day):
     subprocess.run(command, shell=True)
     command = "ncap2 -O -s 'MR_SO4=SO4_NS+SO4_KS+SO4_AS+SO4_CS;' " + myoutput + " -o " + myoutput
     subprocess.run(command, shell=True)
-    command = "ncap2 -O -s 'MR_NI=NO3_A;' " + myoutput + " -o " + myoutput
+    command = "ncap2 -O -s 'MR_NI=NI_AS;' " + myoutput + " -o " + myoutput
     subprocess.run(command, shell=True)
     command = "ncap2 -O -s 'MR_AM=NH4;' " + myoutput + " -o " + myoutput
     subprocess.run(command, shell=True)
@@ -178,7 +178,7 @@ if __name__ == "__main__":
 
     # If system argument is one: Download model data some days ago
     # The idea is to give some extra time for all the models to upload files
-    if len(sys.argv)!=4:
+    if len(sys.argv)!=6:
         print("\nToo few or too many arguments. The script needs 2 or 3 arguments.")
         print("\nDescription : Download daily files from a specific experiment using MARS")
         print("Usage       : python script.py EXPNAME DATESTART DATEEND")
@@ -189,15 +189,16 @@ if __name__ == "__main__":
     # If system arguments are four: Download data file for days between this dates + define output (for COMPASS)
     # Each day count as on MARS request
     # Provide them as: python download_crontab_CAMSr.py 20220627 20220630 path_data
-    elif len(sys.argv)==4:
+    elif len(sys.argv)==6:
         expname      = sys.argv[1]
-        startDate    = datetime.strptime(sys.argv[2],'%Y%m%d')
-        endDate      = datetime.strptime(sys.argv[2],'%Y%m%d')
+        expclass     = sys.argv[2]
+        startDate    = datetime.strptime(sys.argv[3],'%Y%m%d')
+        endDate      = datetime.strptime(sys.argv[4],'%Y%m%d')
         sequenceDate = pd.date_range(startDate, endDate, freq='D')
         dateCodes    = sequenceDate.strftime('%Y-%m-%d')
-        path_data    = sys.argv[3]
+        path_data    = sys.argv[5]
 
-    ### Loop through dates and submit download requests for control and analysis
+    ### Loop through dates and submit download requests for experiment
     for dateCode in dateCodes:
-        retrieve_global(expname,"nl",dateCode) # osuite
+        retrieve_global(expname,expclass,dateCode)
 

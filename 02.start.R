@@ -15,68 +15,91 @@ message(paste0("---> Starting... "))
 ##################
 ### INITIALIZE ### Pretty dum for now add some checks...
 ##################
-args      <- commandArgs(trailingOnly=TRUE)
-expname1  <- args[1]
-exptype1  <- args[2]
-expname2  <- args[3]
-exptype2  <- args[4]
-sDate     <- args[5]
-eDate     <- args[6]
-seqDate   <- format(seq.Date(from=as.Date(sDate, format="%Y%m%d"), to=as.Date(eDate, format="%Y%m%d"), by="day"), "%Y%m%d")
 path_code <- paste0(dirname(normalizePath(sub("--file=", "", commandArgs(FALSE)[grep("--file=", commandArgs(FALSE))]))), "/")
 source(paste0(path_code,"config.R"))
 source(paste0(path_code,"01.init.R"))
+### for downloading...
+seqDate    <- format(seq.Date(from=as.Date(sDate, format="%Y%m%d"), to=as.Date(eDate, format="%Y%m%d"), by="day"), "%Y%m%d")
+step       <- round(length(seqDate)/NumberOfDownloadJobs,0) ; if (step < 1) {step <- 1}
+sDate_temp <- as.Date(sDate, format="%Y%m%d")
+eDate_temp <- as.Date(eDate, format="%Y%m%d")
+vdate1     <- seq.Date(sDate_temp, eDate_temp, paste0(step," day"))
+vdate1     <- gsub(pattern="-", replacement="", x=vdate1)
+sDate_temp <- as.Date(sDate_temp)-1+step
+eDate_temp <- as.Date(eDate_temp)-1+step
+vdate2     <- seq.Date(sDate_temp, eDate_temp, paste0(step," day"))
+vdate2     <- gsub(pattern="-", replacement="", x=vdate2)
+#stop()
 
-if (1==2) {
 ########################
 ### CHECK & DOWNLOAD ###
 ########################
-for (d in 1:length(seqDate)) {
-  for (e in 1:2) {
-    if (e == 1) {expname=expname1;exptype=exptype1}
-    if (e == 2) {expname=expname2;exptype=exptype2}
-    message(paste0("---> Downloading ",expname," (",exptype,")..."))
-    # Download surface (sfc)
-    SubmitJob(
-      JOB_name     = paste0("download_sfc_",expname,"_",seqDate[d]),
-      JOB_out      = paste0(path_log,"download_sfc_",expname,"_",seqDate[d],".out"),
-      JOB_err      = paste0(path_log,"download_sfc_",expname,"_",seqDate[d],".err"),
-      PATH_program = paste0(path_PYTHON,"python"),
-      PATH_script  = paste0(path_code,"03.download_sfc.py"),
-      SCRIPT_flag  = paste0(expname," ",seqDate[d]," ",path_data)
-    )
-    # Download pressure level (HAM)
-    if (exptype == "HAM") {
+if (runtype == "download") {
+  message("---> Download mode...")
+  for (d in 1:length(vdate1)) {
+    for (e in 1:2) {
+      if (e == 1) {expname=expname1;exptype=exptype1;expclass=expclass1}
+      if (e == 2) {expname=expname2;exptype=exptype2;expclass=expclass2}
+      message(paste0("---> Downloading ",expname," (",exptype,")..."))
+
+#if (1==2) {
+      # Download surface (sfc)
+      SubmitJob(
+        JOB_name     = paste0("download_sfc_",expname,"_",vdate1[d],"_",vdate2[d]),
+        JOB_out      = paste0(path_log,"download_sfc_",expname,"_",vdate1[d],"_",vdate2[d],".out"),
+        JOB_err      = paste0(path_log,"download_sfc_",expname,"_",vdate1[d],"_",vdate2[d],".out"),
+        PATH_program = paste0(path_PYTHON,"python"),
+        PATH_script  = paste0(path_code,"03.download_sfc.py"),
+        SCRIPT_flag  = paste0(expname," ",expclass," ",vdate1[d]," ",vdate2[d]," ",path_data)
+      )
+      # Download pressure level (HAM)
+      if (exptype == "HAM") {
         SubmitJob(
-          JOB_name     = paste0("download_pl_M7_",expname,"_",seqDate[d]),
-          JOB_out      = paste0(path_log,"download_pl_M7_",expname,"_",seqDate[d],".out"),
-          JOB_err      = paste0(path_log,"download_pl_M7_",expname,"_",seqDate[d],".err"),
+          JOB_name     = paste0("download_pl_M7_",expname,"_",vdate1[d],"_",vdate2[d]),
+          JOB_out      = paste0(path_log,"download_pl_M7_",expname,"_",vdate1[d],"_",vdate2[d],".out"),
+          JOB_err      = paste0(path_log,"download_pl_M7_",expname,"_",vdate1[d],"_",vdate2[d],".out"),
           PATH_program = paste0(path_PYTHON,"python"),
           PATH_script  = paste0(path_code,"03.download_pl_M7.py"),
-          SCRIPT_flag  = paste0(expname," ",seqDate[d]," ",path_data)
-      )
-    }
-    # Download pressure level (AER)
-    if (exptype == "AER") {
-        SubmitJob( 
-          JOB_name     = paste0("download_pl_",expname,"_",seqDate[d]),
-          JOB_out      = paste0(path_log,"download_pl_",expname,"_",seqDate[d],".out"),
-          JOB_err      = paste0(path_log,"download_pl_",expname,"_",seqDate[d],".err"),
+          SCRIPT_flag  = paste0(expname," ",expclass," ",vdate1[d]," ",vdate2[d]," ",path_data)
+        )
+      }
+      # Download pressure level (HAM)
+      if (exptype == "HAM_NI_CS") {
+        SubmitJob(
+          JOB_name     = paste0("download_pl_M7_",expname,"_",vdate1[d],"_",vdate2[d]),
+          JOB_out      = paste0(path_log,"download_pl_M7_",expname,"_",vdate1[d],"_",vdate2[d],".out"),
+          JOB_err      = paste0(path_log,"download_pl_M7_",expname,"_",vdate1[d],"_",vdate2[d],".out"),
+          PATH_program = paste0(path_PYTHON,"python"),
+          PATH_script  = paste0(path_code,"03.download_pl_M7_Add_NI_CS.py"),
+          SCRIPT_flag  = paste0(expname," ",expclass," ",vdate1[d]," ",vdate2[d]," ",path_data)
+        )
+      }
+      # Download pressure level (AER)
+      if (exptype == "AER") {
+        SubmitJob(
+          JOB_name     = paste0("download_pl_",expname,"_",vdate1[d],"_",vdate2[d]),
+          JOB_out      = paste0(path_log,"download_pl_",expname,"_",vdate1[d],"_",vdate2[d],".out"),
+          JOB_err      = paste0(path_log,"download_pl_",expname,"_",vdate1[d],"_",vdate2[d],".out"),
           PATH_program = paste0(path_PYTHON,"python"),
           PATH_script  = paste0(path_code,"03.download_pl.py"),
-          SCRIPT_flag  = paste0(expname," ",seqDate[d]," ",path_data)
-      )   
-    } 
-  } # END LOOP experiments (e)
-} # END LOOP dates (d)
-}
+          SCRIPT_flag  = paste0(expname," ",expclass," ",vdate1[d]," ",vdate2[d]," ",path_data)
+        )
+      }
+#}
+
+    } # END LOOP experiments (e)
+  } # END LOOP dates (d)
+} # END IF runtype == "download"
+
 
 ############
 ### PLOT ###
 ############
-message(paste0("--> Ploting... "))
-source(paste0(path_code,"04.plot.R"))
-  
+if (runtype == "plot") {
+  message("---> Plot mode...")
+  source(paste0(path_code,"04.plot.R"))
+} # END IF runtype == "plot"
+
 #################
 ### END TIMER ###
 #################

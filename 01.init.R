@@ -7,7 +7,7 @@ username <- system("whoami", intern = TRUE)
 ### PATH ###
 ############
 path_function <- paste0("/perm/",username,"/cams2_35/COMPASS/code/function/")
-path_plot     <- paste0("/perm/",username,"/cams2_35/COMPASS/plot/")
+path_plot     <- paste0("/perm/",username,"/cams2_35/COMPASS/plot/",expname1,"_",expname2,"_",sDate,"-",eDate,"/")
 path_log      <- paste0("/perm/",username,"/cams2_35/COMPASS/log/")
 path_data     <- paste0("/scratch/",username,"/cams2_35/data/")
 path_temp     <- paste0("/scratch/",username,"/cams2_35/temp/")
@@ -28,7 +28,11 @@ suppressWarnings(dir.create(paste0(path_data,"/",expname2), recursive=T, showWar
 #################
 ### LIBRARIES ###
 #################
-library("ncdf4")
+suppressWarnings( library("ncdf4"   , quietly=T) )
+suppressWarnings( library("showtext", quietly=T) )
+font_add(family = "Century Gothic", regular = "/home/nktt/fonts/CenturyGothic/centurygothic.ttf")
+showtext_auto()
+
 
 ################
 ### FUNCTION ###
@@ -37,6 +41,8 @@ source(paste0(path_function,"MapNC.R"))
 source(paste0(path_function,"get_AngstromExponent.R"))
 source(paste0(path_function,"compress.R"))
 source(paste0(path_function,"SubmitJob.R"))
+source(paste0(path_function,"Normalization.R"))
+Sys.setenv(PROJ_LIB = "/etc/ecmwf/nfs/dh1_perm_b/nktt/miniforge3/envs/COMPASS/share/proj") # So sf can stop complaining...
 
 ############
 ### INIT ###

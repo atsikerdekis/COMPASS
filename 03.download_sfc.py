@@ -103,7 +103,7 @@ if __name__ == "__main__":
 
     # If system argument is one: Download model data some days ago
     # The idea is to give some extra time for all the models to upload files
-    if len(sys.argv)!=4:
+    if len(sys.argv)!=6:
         print("\nToo few or too many arguments. The script needs 2 or 3 arguments.")
         print("\nDescription : Download daily files from a specific experiment using MARS")
         print("Usage       : python script.py EXPNAME DATESTART DATEEND")
@@ -114,15 +114,16 @@ if __name__ == "__main__":
     # If system arguments are four: Download data file for days between this dates + define output (for COMPASS)
     # Each day count as on MARS request
     # Provide them as: python download_crontab_CAMSr.py 20220627 20220630 path_data
-    elif len(sys.argv)==4:
+    elif len(sys.argv)==6:
         expname      = sys.argv[1]
-        startDate    = datetime.strptime(sys.argv[2],'%Y%m%d')
-        endDate      = datetime.strptime(sys.argv[2],'%Y%m%d')
+        expclass     = sys.argv[2]
+        startDate    = datetime.strptime(sys.argv[3],'%Y%m%d')
+        endDate      = datetime.strptime(sys.argv[4],'%Y%m%d')
         sequenceDate = pd.date_range(startDate, endDate, freq='D')
         dateCodes    = sequenceDate.strftime('%Y-%m-%d')
-        path_data    = sys.argv[3]
+        path_data    = sys.argv[5]
 
-    ### Loop through dates and submit download requests for control and analysis
+    ### Loop through dates and submit download requests for experiment
     for dateCode in dateCodes:
-        retrieve_global(expname,"nl",dateCode) # osuite
+        retrieve_global(expname,expclass,dateCode) 
 

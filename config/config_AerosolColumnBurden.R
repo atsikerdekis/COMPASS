@@ -1,3 +1,16 @@
+### EXP settings
+expname1  <- "b2t5"     # 4 letter of the experiment name
+exptype1  <- "HAM"      # Either AER or HAM
+expclass1 <- "nl"       # Class from MARS system
+expname2  <- "it41"     # 4 letter of the experiment name
+exptype2  <- "AER"      # Either AER or HAM
+expclass2 <- "rd"       # Class from MARS system
+sDate     <- "20181201" # Starting date in the form of YYYYMMDD
+eDate     <- "20181231" # Ending date in the form of YYYYMMDD
+runtype   <- "download" # Could be either "download" or "plot"
+### DOWNLOAD settings
+NumberOfDownloadJobs <- 4 # This is per experiment!
+### PLOT settings
 plot_title     <- "Aerosol Column Burden"
 variable_title <- c("Total Column Burden","DU Column Burden","SS Column Burden","POM Column Burden","BC Column Burden","SO4 Column Burden","AM Column Burden","NI Column Burden")
 variable_name  <- c("BU_AERO","BU_DU","BU_SS","BU_POM","BU_BC","BU_SO4","BU_AM","BU_NI")

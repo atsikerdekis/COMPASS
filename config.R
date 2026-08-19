@@ -1,12 +1,12 @@
-### EXP settings
-expname1  <- "iyfb"      # 4 letter of the experiment name
-exptype1  <- "AER"       # Either AER or HAM
-expclass1 <- "rd"        # Class from MARS system
-expname2  <- "b2wz"      # 4 letter of the experiment name
+### EXPIREMENTS settings
+expname1  <- "b30b"      # 4 letter of the experiment name
+exptype1  <- "HAM_NI_CS" # Either AER or HAM or HAM_NI_CS
+expclass1 <- "nl"        # Class from MARS system
+expname2  <- "b30j"      # 4 letter of the experiment name
 exptype2  <- "HAM_NI_CS" # Either AER or HAM or HAM_NI_CS
 expclass2 <- "nl"        # Class from MARS system
-sDate     <- "20190101"  # Starting date in the form of YYYYMMDD
-eDate     <- "20190103"  # Ending date in the form of YYYYMMDD
+sDate     <- "20181203"  # Starting date in the form of YYYYMMDD
+eDate     <- "20181203"  # Ending date in the form of YYYYMMDD
 runtype   <- "download"  # Could be either "download" or "plot"
 ### DOWNLOAD settings
 NumberOfDownloadJobs <- 1 # This is per experiment per kind (pl and sfc) so 1 = 4 parallel Jobs! Max is 20 under hpc-login

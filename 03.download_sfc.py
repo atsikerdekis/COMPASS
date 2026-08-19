@@ -58,6 +58,7 @@ def retrieve_global(expname,expclass,day):
                 "expver": expname,
                 "levtype": "sfc",
                 "param": "104.215/109.215/140.215/207.210/215.210",
+                #"param": "150.216",
                 "step": "0/3/6/9/12/15/18/21",
                 "stream": "oper",
                 "time": "00",

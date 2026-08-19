@@ -141,7 +141,7 @@ par(mai=c(0,0,0,0));plot.new()
 par(mai=c(0,0,0,0));plot.new();text(0.5,0.5, paste0(expname1," (",exptype1,")"), col="grey20", cex=4.5, family="Century Gothic", srt=0)
 par(mai=c(0,0,0,0));plot.new();text(0.5,0.5, paste0(expname2," (",exptype2,")"), col="grey20", cex=4.5, family="Century Gothic", srt=0)
 par(mai=c(0,0,0,0));plot.new()
-par(mai=c(0,0,0,0));plot.new();text(0.5,0.5, paste0(expname1," - ",expname2), col="grey20", cex=4.5, family="Century Gothic", srt=0)
+par(mai=c(0,0,0,0));plot.new();text(0.5,0.5, paste0(expname2," - ",expname1), col="grey20", cex=4.5, family="Century Gothic", srt=0)
 par(mai=c(0,0,0,0));plot.new()
 #par(mai=c(0,0,0,0));plot.new()
 
@@ -287,7 +287,7 @@ par(mai=c(0,0,0,0));plot.new()
         coastlineWorldFine_lwd=coastlineWorldFine_lwd,
         gridlines=gridlines,
         projection=projection, lonmax=lonmax, lonmin=lonmin, latmax=latmax, latmin=latmin,
-        field_value=field_var1-field_var2, 
+        field_value=field_var2-field_var1, 
         field_lon=field_lon, 
         field_lat=field_lat,
         field_pallete_name="MNMB",

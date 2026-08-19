@@ -42,7 +42,7 @@ if (runtype == "download") {
       if (e == 2) {expname=expname2;exptype=exptype2;expclass=expclass2}
       message(paste0("---> Downloading ",expname," (",exptype,")..."))
 
-#if (1==2) {
+#if (1==2) { # TEST IF
       # Download surface (sfc)
       SubmitJob(
         JOB_name     = paste0("download_sfc_",expname,"_",vdate1[d],"_",vdate2[d]),
@@ -52,6 +52,7 @@ if (runtype == "download") {
         PATH_script  = paste0(path_code,"03.download_sfc.py"),
         SCRIPT_flag  = paste0(expname," ",expclass," ",vdate1[d]," ",vdate2[d]," ",path_data)
       )
+if (1==2) { # TEST IF
       # Download pressure level (HAM)
       if (exptype == "HAM") {
         SubmitJob(
@@ -85,7 +86,7 @@ if (runtype == "download") {
           SCRIPT_flag  = paste0(expname," ",expclass," ",vdate1[d]," ",vdate2[d]," ",path_data)
         )
       }
-#}
+} # END TEST IF
 
     } # END LOOP experiments (e)
   } # END LOOP dates (d)

@@ -1,110 +1,131 @@
 ###
-### Created : Thanos Tsikerdekis (KNMI) | May 2025 |
+### Created : Thanos Tsikerdekis (KNMI) | May 2025
 ### Contact : thanos.tsikerdekis@knmi.nl
 ### Purpose : Start a comparison
-### Example : Rscript 01.start.R
-### Envirom : ...
 ###
 
 ###################
 ### START TIMER ###
 ###################
 stime <- Sys.time()
-message(paste0("---> Starting... "))
+message("---> Starting...")
 
 ##################
-### INITIALIZE ### Pretty dum for now add some checks...
+### INITIALIZE ###
 ##################
 path_code <- paste0(dirname(normalizePath(sub("--file=", "", commandArgs(FALSE)[grep("--file=", commandArgs(FALSE))]))), "/")
 source(paste0(path_code,"config.R"))
 source(paste0(path_code,"01.init.R"))
-### for downloading...
-seqDate    <- format(seq.Date(from=as.Date(sDate, format="%Y%m%d"), to=as.Date(eDate, format="%Y%m%d"), by="day"), "%Y%m%d")
-step       <- round(length(seqDate)/NumberOfDownloadJobs,0) ; if (step < 1) {step <- 1}
-sDate_temp <- as.Date(sDate, format="%Y%m%d")
-eDate_temp <- as.Date(eDate, format="%Y%m%d")
-vdate1     <- seq.Date(sDate_temp, eDate_temp, paste0(step," day"))
-vdate1     <- gsub(pattern="-", replacement="", x=vdate1)
-sDate_temp <- as.Date(sDate_temp)-1+step
-eDate_temp <- as.Date(eDate_temp)-1+step
-vdate2     <- seq.Date(sDate_temp, eDate_temp, paste0(step," day"))
-vdate2     <- gsub(pattern="-", replacement="", x=vdate2)
-#stop()
+
+######################
+### DOWNLOAD DATES ###
+######################
+seqDate <- format(seq.Date(from=as.Date(sDate,format="%Y%m%d"),to=as.Date(eDate,format="%Y%m%d"),by="day"),"%Y%m%d")
+
+step <- round(length(seqDate)/NumberOfDownloadJobs,0)
+if (step < 1) step <- 1
+
+sDate_temp <- as.Date(sDate,format="%Y%m%d")
+eDate_temp <- as.Date(eDate,format="%Y%m%d")
+
+vdate1 <- gsub("-","",seq.Date(sDate_temp,eDate_temp,paste0(step," day")))
+
+sDate_temp <- sDate_temp-1+step
+eDate_temp <- eDate_temp-1+step
+
+vdate2 <- gsub("-","",seq.Date(sDate_temp,eDate_temp,paste0(step," day")))
 
 ########################
 ### CHECK & DOWNLOAD ###
 ########################
 if (runtype == "download") {
-  message("---> Download mode...")
-  for (d in 1:length(vdate1)) {
-    for (e in 1:2) {
-      if (e == 1) {expname=expname1;exptype=exptype1;expclass=expclass1}
-      if (e == 2) {expname=expname2;exptype=exptype2;expclass=expclass2}
-      message(paste0("---> Downloading ",expname," (",exptype,")..."))
 
-#if (1==2) { # TEST IF
-      # Download surface (sfc)
-      SubmitJob(
-        JOB_name     = paste0("download_sfc_",expname,"_",vdate1[d],"_",vdate2[d]),
-        JOB_out      = paste0(path_log,"download_sfc_",expname,"_",vdate1[d],"_",vdate2[d],".out"),
-        JOB_err      = paste0(path_log,"download_sfc_",expname,"_",vdate1[d],"_",vdate2[d],".out"),
-        PATH_program = paste0(path_PYTHON,"python"),
-        PATH_script  = paste0(path_code,"03.download_sfc.py"),
-        SCRIPT_flag  = paste0(expname," ",expclass," ",vdate1[d]," ",vdate2[d]," ",path_data)
-      )
-if (1==2) { # TEST IF
-      # Download pressure level (HAM)
-      if (exptype == "HAM") {
-        SubmitJob(
-          JOB_name     = paste0("download_pl_M7_",expname,"_",vdate1[d],"_",vdate2[d]),
-          JOB_out      = paste0(path_log,"download_pl_M7_",expname,"_",vdate1[d],"_",vdate2[d],".out"),
-          JOB_err      = paste0(path_log,"download_pl_M7_",expname,"_",vdate1[d],"_",vdate2[d],".out"),
-          PATH_program = paste0(path_PYTHON,"python"),
-          PATH_script  = paste0(path_code,"03.download_pl_M7.py"),
-          SCRIPT_flag  = paste0(expname," ",expclass," ",vdate1[d]," ",vdate2[d]," ",path_data)
-        )
+  message("---> Download mode...")
+
+  for (d in seq_along(vdate1)) {
+
+    for (e in 1:2) {
+
+      if (e == 1) {
+        expname  <- expname1
+        exptype  <- exptype1
+        expclass <- expclass1
+        expvars  <- variables_exp1
+      } else {
+        expname  <- expname2
+        exptype  <- exptype2
+        expclass <- expclass2
+        expvars  <- variables_exp2
       }
-      # Download pressure level (HAM)
-      if (exptype == "HAM_NI_CS") {
+
+      message("---> Downloading ",expname," (",exptype,")...")
+
+      #########################
+      ### SELECT PARAMETERS ###
+      #########################
+
+      ### Pressure-level diagnostics
+      params_pl <- unique(expvars$grib[expvars$grib_column == "grib"])
+      params_pl <- params_pl[!is.na(params_pl) & params_pl != ""]
+      params_pl <- paste(params_pl,collapse="/")
+
+      ### Surface diagnostics
+      surface_columns <- c("gribddp","gribsdm","gribwdl","gribwdc")
+      params_sfc <- unique(expvars$grib[expvars$grib_column %in% surface_columns])
+      params_sfc <- params_sfc[!is.na(params_sfc) & params_sfc != ""]
+      params_sfc <- paste(params_sfc,collapse="/")
+
+      message("---> PL parameters: ",ifelse(params_pl == "","none",params_pl))
+      message("---> SFC parameters: ",ifelse(params_sfc == "","none",params_sfc))
+
+      ########################
+      ### SURFACE DOWNLOAD ###
+      ########################
+      if (params_sfc != "") {
+
         SubmitJob(
-          JOB_name     = paste0("download_pl_M7_",expname,"_",vdate1[d],"_",vdate2[d]),
-          JOB_out      = paste0(path_log,"download_pl_M7_",expname,"_",vdate1[d],"_",vdate2[d],".out"),
-          JOB_err      = paste0(path_log,"download_pl_M7_",expname,"_",vdate1[d],"_",vdate2[d],".out"),
+          JOB_name     = paste0("download_sfc_",expname,"_",vdate1[d],"_",vdate2[d]),
+          JOB_out      = paste0(path_log,"download_sfc_",expname,"_",vdate1[d],"_",vdate2[d],".out"),
+          JOB_err      = paste0(path_log,"download_sfc_",expname,"_",vdate1[d],"_",vdate2[d],".out"),
           PATH_program = paste0(path_PYTHON,"python"),
-          PATH_script  = paste0(path_code,"03.download_pl_M7_Add_NI_CS.py"),
-          SCRIPT_flag  = paste0(expname," ",expclass," ",vdate1[d]," ",vdate2[d]," ",path_data)
+          PATH_script  = paste0(path_code,"03.download_sfc.py"),
+          SCRIPT_flag  = paste(expname,expclass,vdate1[d],vdate2[d],path_data,params_sfc)
         )
+
       }
-      # Download pressure level (AER)
-      if (exptype == "AER") {
+
+      ###############################
+      ### PRESSURE LEVEL DOWNLOAD ###
+      ###############################
+      if (params_pl != "") {
+
         SubmitJob(
           JOB_name     = paste0("download_pl_",expname,"_",vdate1[d],"_",vdate2[d]),
           JOB_out      = paste0(path_log,"download_pl_",expname,"_",vdate1[d],"_",vdate2[d],".out"),
           JOB_err      = paste0(path_log,"download_pl_",expname,"_",vdate1[d],"_",vdate2[d],".out"),
           PATH_program = paste0(path_PYTHON,"python"),
           PATH_script  = paste0(path_code,"03.download_pl.py"),
-          SCRIPT_flag  = paste0(expname," ",expclass," ",vdate1[d]," ",vdate2[d]," ",path_data)
+          SCRIPT_flag  = paste(expname,expclass,vdate1[d],vdate2[d],path_data,params_pl)
         )
+
       }
-} # END TEST IF
 
-    } # END LOOP experiments (e)
-  } # END LOOP dates (d)
-} # END IF runtype == "download"
+    }
 
+  }
+
+}
 
 ############
 ### PLOT ###
 ############
 if (runtype == "plot") {
   message("---> Plot mode...")
-  source(paste0(path_code,"04.plot.R"))
-} # END IF runtype == "plot"
+  source(paste0(path_code,"05.plot.R"))
+}
 
 #################
 ### END TIMER ###
 #################
 etime <- Sys.time()
-message(paste0("---> Completed in ",round(difftime(etime,stime, units="mins"),1)," minutes."))
-
-
+message("---> Completed in ",round(difftime(etime,stime,units="mins"),1)," minutes.")

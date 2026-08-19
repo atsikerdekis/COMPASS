@@ -1,130 +1,121 @@
 #!/anaconda3/bin/python -u
 
-###!/anaconda3/envs/cams2_83/bin/python
-
-# Created : Thanos Tsikerdekis | Apr 2025 | Download from MARS
-# Parts of code from J.Douros and B.Mijling scripts were used and modified.
-
-####################
-### LOAD MODULES ###
-####################
-import os, sys
+import os
+import sys
 import subprocess
 import pandas as pd
 from ecmwfapi import ECMWFService
-from datetime import datetime, timedelta, date
-from dateutil import parser
-from tenacity import *
-from random   import randint
+from datetime import datetime
+from tenacity import retry, stop_after_attempt
 
-################################
-### FUNCTION retrieve_global ###
-################################
-def retrieve_global(expname,expclass,day):
-    
-    ### SET PATHS
-    TEMP_DIR  = '/tmp/'
-    OUT_DIR   = path_data + expname
-    DATA_NAME = 'CAMS_' + expname + '_forecast00to21by03_0.7x0.7_sfc'
+CDO = "/usr/local/apps/cdo/2.5.1/bin/cdo"
 
-    ### CREATE TEMPORARY DIRECTORY IF IT DOES NOT EXIST
-    daystrip = day.replace('-','')
+def grib_to_canonical_ncname(grib):
+    number, table = grib.split(".")
+    return f"p{int(table):03d}{int(number):03d}"
+
+def normalize_variable_names(filename, params):
+
+    requested = params.split("/")
+    expected_names = [grib_to_canonical_ncname(x) for x in requested]
+
+    result = subprocess.run([CDO,"-s","showname",filename],capture_output=True,text=True,check=True)
+    current_names = result.stdout.split()
+
+    print("Requested GRIBs :", requested)
+    print("Current variables:", current_names)
+    print("Expected names   :", expected_names)
+
+    if len(current_names) != len(expected_names):
+        raise RuntimeError(
+            f"Cannot safely rename variables. Requested {len(expected_names)} fields "
+            f"but NetCDF contains {len(current_names)} data variables: {current_names}"
+        )
+
+    for current, expected in zip(current_names,expected_names):
+
+        if current == expected:
+            print(f"Variable {current} already correctly named.")
+            continue
+
+        print(f"Renaming {current} -> {expected}")
+        subprocess.run(["ncrename","-O","-v",f"{current},{expected}",filename],check=True)
+
+def retrieve_global(expname, expclass, day, params):
+
+    TEMP_DIR = "/tmp/"
+    OUT_DIR = path_data + expname
+    DATA_NAME = "CAMS_" + expname + "_forecast00to21by03_0.7x0.7_sfc"
+
+    daystrip = day.replace("-","")
     mytempdir = TEMP_DIR + daystrip
-    if not os.path.exists(mytempdir): os.makedirs(mytempdir)
 
-    # CREATE OUTPUT DIRECTORY IF IT DOES NOT EXIST
+    if not os.path.exists(mytempdir): os.makedirs(mytempdir)
     if not os.path.exists(OUT_DIR): os.makedirs(OUT_DIR)
+
     myoutput = OUT_DIR + "/" + DATA_NAME + "_" + daystrip + ".nc"
 
-    # SKIP IF OUTPUT FILE ALREADY EXISTS
     if os.path.isfile(myoutput):
         print(f"File {myoutput} already exists, skipping...")
-        return #Skip downloading if file exists
+        return
 
-    # IF TEMPORARY FILE EXIST REMOVE IT
-    mytempfn = TEMP_DIR + "Temp_" + DATA_NAME + "_" + day.replace('-','') + "_day_2D.nc"
-    if os.path.isfile(mytempfn):
-        command = 'rm -f ' + mytempfn
-        subprocess.run(command, shell=True)
+    mytempfn = TEMP_DIR + "Temp_" + DATA_NAME + "_" + daystrip + "_day_2D.nc"
+    if os.path.isfile(mytempfn): os.remove(mytempfn)
 
     @retry(stop=stop_after_attempt(1))
     def retryfc():
-        if True:
-            print("Trying to download:",mytempfn)
-            server = ECMWFService("mars")
-            server.execute({
-                "class": expclass,
-                "date": day,
-                "expver": expname,
-                "levtype": "sfc",
-                "param": "104.215/109.215/140.215/207.210/215.210",
-                #"param": "150.216",
-                "step": "0/3/6/9/12/15/18/21",
-                "stream": "oper",
-                "time": "00",
-                "type": "fc",
-                "format": "netcdf",
-                "grid": "0.7/0.7",
-                },
-                mytempfn)
-            print("Apparently succeded!")
 
-        else:
-            #except Exception as e:
-            print("The following error happened while trying to download:", str(e))
-            # If the following exception happen, do not retry
-            if ('No available data matches request' or \
-                    'Bad magic number') in str(e):
-                    print("This is a special kind of error, stop retrying...")
-                    return
+        print("Trying to download:",mytempfn)
+        print("Parameters:",params)
+
+        server = ECMWFService("mars")
+
+        server.execute({
+            "class": expclass,
+            "date": day,
+            "expver": expname,
+            "levtype": "sfc",
+            "param": params,
+            "step": "0/3/6/9/12/15/18/21",
+            "stream": "oper",
+            "time": "00",
+            "type": "fc",
+            "format": "netcdf",
+            "grid": "0.7/0.7",
+        },mytempfn)
+
+        print("Apparently succeeded!")
+
     retryfc()
 
-    # COMPRESS
-    command = 'ncpdq -O -4 -L 1 ' + mytempfn + ' ' + myoutput
-    subprocess.run(command, shell=True)
+    normalize_variable_names(mytempfn,params)
 
-    # CLEANUP TEMP FILES
-    command = "rm -f " + mytempfn
-    subprocess.run(command, shell=True)
+    subprocess.run(["ncpdq","-O","-4","-L","1",mytempfn,myoutput],check=True)
 
-    # SHARE THE GOOD NEWS
-    print("File output at:", myoutput)
+    if os.path.isfile(mytempfn): os.remove(mytempfn)
 
-############
-### MAIN ###
-############
+    print("File output at:",myoutput)
+
 if __name__ == "__main__":
 
     if "-h" in sys.argv or "--help" in sys.argv:
-        print("\nDescription : Download daily files from a specific experiment using MARS")
-        print("Usage       : python script.py EXPNAME DATESTART DATEEND")
-        print("Example1    : python script.py b2r3 20250101")
-        print("Example2    : python script.py b2r3 20250101 20250103\n")
+        print("\nUsage: python script.py EXPNAME EXPCLASS DATESTART DATEEND PATH_DATA PARAMS\n")
         sys.exit()
 
-    # If system argument is one: Download model data some days ago
-    # The idea is to give some extra time for all the models to upload files
-    if len(sys.argv)!=6:
-        print("\nToo few or too many arguments. The script needs 2 or 3 arguments.")
-        print("\nDescription : Download daily files from a specific experiment using MARS")
-        print("Usage       : python script.py EXPNAME DATESTART DATEEND")
-        print("Example1    : python script.py b2r3 20250101")
-        print("Example2    : python script.py b2r3 20250101 20250103\n")
-        sys.exit()
+    if len(sys.argv) != 7:
+        print("\nIncorrect number of arguments.")
+        print("Usage: python script.py EXPNAME EXPCLASS DATESTART DATEEND PATH_DATA PARAMS\n")
+        sys.exit(1)
 
-    # If system arguments are four: Download data file for days between this dates + define output (for COMPASS)
-    # Each day count as on MARS request
-    # Provide them as: python download_crontab_CAMSr.py 20220627 20220630 path_data
-    elif len(sys.argv)==6:
-        expname      = sys.argv[1]
-        expclass     = sys.argv[2]
-        startDate    = datetime.strptime(sys.argv[3],'%Y%m%d')
-        endDate      = datetime.strptime(sys.argv[4],'%Y%m%d')
-        sequenceDate = pd.date_range(startDate, endDate, freq='D')
-        dateCodes    = sequenceDate.strftime('%Y-%m-%d')
-        path_data    = sys.argv[5]
+    expname = sys.argv[1]
+    expclass = sys.argv[2]
+    startDate = datetime.strptime(sys.argv[3],"%Y%m%d")
+    endDate = datetime.strptime(sys.argv[4],"%Y%m%d")
+    path_data = sys.argv[5]
+    params = sys.argv[6]
 
-    ### Loop through dates and submit download requests for experiment
+    sequenceDate = pd.date_range(startDate,endDate,freq="D")
+    dateCodes = sequenceDate.strftime("%Y-%m-%d")
+
     for dateCode in dateCodes:
-        retrieve_global(expname,expclass,dateCode) 
-
+        retrieve_global(expname,expclass,dateCode,params)

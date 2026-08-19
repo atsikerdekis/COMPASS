@@ -17,7 +17,7 @@ variable_stream <- function(logical_name,variable_table) {
   columns <- unique(rows$grib_column)
 
   if (all(columns == "grib")) return("pl")
-  if (all(columns %in% c("gribddp","gribsdm","gribwdl","gribwdc"))) return("sfc")
+  if (all(columns %in% c("gribddp","gribsdm","gribwdl","gribwdc","gribmss"))) return("sfc")
 
   stop("Logical variable '",logical_name,"' uses incompatible GRIB streams: ",paste(columns,collapse=", "))
 }

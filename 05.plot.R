@@ -21,14 +21,15 @@ seqDate <- format(seq.Date(from=as.Date(sDate,format="%Y%m%d"),to=as.Date(eDate,
 ########################
 ### VARIABLE FAMILIES ###
 ########################
-plot_types <- c("mmr","ddp","sdm","wdl","wdc")
+plot_types <- c("mmr","ddp","sdm","wdl","wdc","mss")
 
 plot_type_title <- c(
   mmr = "Mass mixing ratio",
   ddp = "Dry deposition",
   sdm = "Sedimentation",
-  wdl = "Large-scale wet deposition",
-  wdc = "Convective wet deposition"
+  wdl = "Large-scale wet dep.",
+  wdc = "Convective wet dep.",
+  mss = "Column mass burden"
 )
 
 ########################

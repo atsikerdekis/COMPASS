@@ -60,7 +60,8 @@ variable_columns <- c(
   ddp = "gribddp",
   sdm = "gribsdm",
   wdl = "gribwdl",
-  wdc = "gribwdc"
+  wdc = "gribwdc",
+  mss = "gribmss"
 )
 
 required_columns <- c("name",unname(variable_columns))

@@ -70,7 +70,7 @@ if (runtype == "download") {
       params_pl <- paste(params_pl,collapse="/")
 
       ### Surface diagnostics
-      surface_columns <- c("gribddp","gribsdm","gribwdl","gribwdc")
+      surface_columns <- c("gribddp","gribsdm","gribwdl","gribwdc","gribmss")
       params_sfc <- unique(expvars$grib[expvars$grib_column %in% surface_columns])
       params_sfc <- params_sfc[!is.na(params_sfc) & params_sfc != ""]
       params_sfc <- paste(params_sfc,collapse="/")

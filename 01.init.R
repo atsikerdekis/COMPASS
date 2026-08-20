@@ -244,12 +244,26 @@ resolve_HAM_variable <- function(logical_name) {
 }
 
 ##############################
+##############################
 ### AER VARIABLE RESOLUTION ###
 ##############################
-### Keep AER aliases explicit for now.
-AER_aliases <- list(
-  du_acc = c("DUS","DUM","DUL")
+
+aer_names <- normalize_csv_name(grib_AER$name)
+
+### Common logical species names.
+### These are also the species which can be compared HAM vs AER.
+AER_species_aliases <- list(
+  ss  = c("SSS","SSM","SSL"),
+  du  = c("DUS","DUM","DUL"),
+  pom = c("OMHPHIL","OMHPHOB"),
+  bc  = c("BCHPHIL","BCHPHOB"),
+  so4 = c("SU"),
+  ni  = c("NIF","NIC"),
+  am  = c("AM"),
+  soa = c("SOA1","SOA2")
 )
+
+common_HAM_AER_species <- names(AER_species_aliases)
 
 resolve_AER_variable <- function(logical_name) {
 
@@ -262,28 +276,68 @@ resolve_AER_variable <- function(logical_name) {
   suffix <- sub("^[^_]+_","",logical_name)
   grib_column <- variable_columns[[prefix]]
 
-  if (!suffix %in% names(AER_aliases)) {
-    stop("AER variable '",logical_name,"' is not yet defined in AER_aliases.")
+  ########################
+  ### 1. SPECIES TOTAL ###
+  ########################
+  ### Examples:
+  ### ddp_ss  -> SSS + SSM + SSL
+  ### ddp_du  -> DUS + DUM + DUL
+  ### ddp_pom -> OMHPHIL + OMHPHOB
+  if (suffix %in% names(AER_species_aliases)) {
+
+    csv_names <- AER_species_aliases[[suffix]]
+    idx <- which(aer_names %in% normalize_csv_name(csv_names))
+
+    if (length(idx) == 0) {
+      stop("AER species variable '",logical_name,"' could not be resolved.")
+    }
+
+    return(make_result(logical_name,idx,grib_column,grib_AER))
   }
 
-  csv_names <- AER_aliases[[suffix]]
-  result <- data.frame()
+  #######################
+  ### 2. EXACT TRACER ###
+  #######################
+  ### Examples:
+  ### ddp_sss
+  ### ddp_dum
+  ### ddp_omhphil
+  ### ddp_bchphob
+  ### ddp_nic
+  ### ddp_soa1
+  ### ddp_vfa
+  idx <- which(aer_names == suffix)
 
-  for (csv_name in csv_names) {
-
-    idx <- which(
-      normalize_csv_name(grib_AER$name) ==
-      normalize_csv_name(csv_name)
-    )
-
-    if (length(idx) == 0) stop("AER CSV name '",csv_name,"' not found for variable ",logical_name)
-    if (length(idx) > 1) stop("AER CSV name '",csv_name,"' occurs multiple times.")
-
-    temp <- make_result(logical_name,idx,grib_column,grib_AER)
-    result <- rbind(result,temp)
+  if (length(idx) == 1) {
+    return(make_result(logical_name,idx,grib_column,grib_AER))
   }
 
-  result
+  if (length(idx) > 1) {
+    stop("AER variable '",logical_name,"' matches multiple AER rows.")
+  }
+
+  stop("AER variable '",logical_name,"' could not be resolved.")
+}
+
+###################################
+### HAM VS AER COMPATIBILITY ###
+###################################
+mixed_aerosol_schemes <- exptype1 != exptype2
+
+if (mixed_aerosol_schemes) {
+
+  for (logical_name in variables_for_resolution) {
+
+    suffix <- sub("^[^_]+_","",logical_name)
+
+    if (!suffix %in% common_HAM_AER_species) {
+      stop(
+        "HAM vs AER comparisons support per-species variables only. ",
+        "Variable '",logical_name,"' is not a common HAM/AER species. ",
+        "Available species: ",paste(common_HAM_AER_species,collapse=", ")
+      )
+    }
+  }
 }
 
 ###################################
@@ -301,13 +355,6 @@ resolve_variables <- function(exptype,variables) {
     }
 
     if (exptype == "AER") {
-
-      suffix <- sub("^[^_]+_","",logical_name)
-
-      ### AER support is still partial, so variables which only belong to HAM
-      ### are ignored for an AER experiment.
-      if (!suffix %in% names(AER_aliases)) next
-
       temp <- resolve_AER_variable(logical_name)
       result <- rbind(result,temp)
     }
@@ -316,9 +363,9 @@ resolve_variables <- function(exptype,variables) {
   result
 }
 
-###############################
+################################
 ### RESOLVE BOTH EXPERIMENTS ###
-###############################
+################################
 variables_exp1 <- resolve_variables(exptype1,variables_for_resolution)
 variables_exp2 <- resolve_variables(exptype2,variables_for_resolution)
 

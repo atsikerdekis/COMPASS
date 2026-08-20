@@ -77,10 +77,23 @@ get_variable_units <- function(file,logical_name,variable_table) {
 }
 
 get_plot_category <- function(logical_name) {
+
   suffix <- sub("^[^_]+_","",logical_name)
+
+  ### HAM vs AER: only common species comparisons are allowed
+  if (exptype1 != exptype2) return("per_species")
+
+  ### AER vs AER
+  if (exptype1 == "AER" && exptype2 == "AER") {
+    if (suffix %in% common_HAM_AER_species) return("per_species")
+    if (suffix %in% aer_names) return("per_tracer")
+    stop("Could not determine AER plot category for ",logical_name)
+  }
+
+  ### HAM vs HAM
   if (suffix %in% c("soluble","insoluble")) return("per_solubility")
-  if (suffix %in% c("ns","ks","as","cs","ki","ai","ci")) return("per_mode")
-  if (grepl("_(ns|ks|as|cs|ki|ai|ci)$",suffix)) return("per_tracer")
+  if (suffix %in% ham_modes) return("per_mode")
+  if (grepl(paste0("_(",paste(ham_modes,collapse="|"),")$"),suffix)) return("per_tracer")
   return("per_species")
 }
 

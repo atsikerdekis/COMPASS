@@ -102,6 +102,26 @@ ham_component_rows <- grepl(
   ham_names
 )
 
+######################################
+### EXPAND COMPOSITE DEP VARIABLES ###
+######################################
+variables_requested <- variables
+dep_fluxes <- c("ddp","sdm","wdl","wdc","ngt")
+dep_variables <- variables_requested[startsWith(variables_requested,"dep_")]
+
+expand_dep_variable <- function(x) {
+  suffix <- sub("^dep_","",x)
+  paste0(dep_fluxes,"_",suffix)
+}
+
+variables_for_resolution <- variables_requested[!startsWith(variables_requested,"dep_")]
+
+if (length(dep_variables) > 0) {
+  for (x in dep_variables) variables_for_resolution <- c(variables_for_resolution,expand_dep_variable(x))
+}
+
+variables_for_resolution <- unique(variables_for_resolution)
+
 ###################################
 ### BUILD RESOLVED RESULT TABLE ###
 ###################################
@@ -299,14 +319,15 @@ resolve_variables <- function(exptype,variables) {
 ###############################
 ### RESOLVE BOTH EXPERIMENTS ###
 ###############################
-variables_exp1 <- resolve_variables(exptype1,variables)
-variables_exp2 <- resolve_variables(exptype2,variables)
+variables_exp1 <- resolve_variables(exptype1,variables_for_resolution)
+variables_exp2 <- resolve_variables(exptype2,variables_for_resolution)
 
 ###################
 ### INFORMATION ###
 ###################
 message("---> ",expname1," (",exptype1,"): ",paste(unique(variables_exp1$logical_name),collapse=", "))
 message("---> ",expname2," (",exptype2,"): ",paste(unique(variables_exp2$logical_name),collapse=", "))
+if (length(dep_variables) > 0) message("---> Composite deposition plots: ",paste(dep_variables,collapse=", "))
 
 if (nrow(variables_exp1) > 0) message("---> ",expname1," GRIBs: ",paste(unique(variables_exp1$grib),collapse="/"))
 if (nrow(variables_exp2) > 0) message("---> ",expname2," GRIBs: ",paste(unique(variables_exp2$grib),collapse="/"))

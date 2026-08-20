@@ -33,6 +33,10 @@ plot_type_title <- c(
   ngt = "Negative fixer"
 )
 
+dep_fluxes <- c("ddp","sdm","wdl","wdc","ngt")
+dep_flux_colors <- c(ddp="#846040",sdm="#D78C6A",wdl="#74ACE8",wdc="#3E7DD1",ngt="#3FC13A")
+requested_individual_variables <- variables_requested[!startsWith(variables_requested,"dep_")]
+
 ########################
 ### HELPER FUNCTIONS ###
 ########################
@@ -50,7 +54,8 @@ axis_ticks <- function(x,n=5,small_thresh=0.01,large_thresh=100) {
 }
 
 get_type_variables <- function(variable_table,type) {
-  unique(variable_table$logical_name[startsWith(variable_table$logical_name,paste0(type,"_"))])
+  x <- unique(variable_table$logical_name[startsWith(variable_table$logical_name,paste0(type,"_"))])
+  x[x %in% requested_individual_variables]
 }
 
 read_lon_lat <- function(file) {
@@ -82,9 +87,18 @@ get_plot_category <- function(logical_name) {
 read_daily_variable <- function(expname,exptype,logical_name,variable_table,type,date) {
   file <- variable_file(logical_name,variable_table,expname,date)
   if (!file.exists(file)) stop("Input file not found: ",file)
-
   if (type == "mmr") return(read_variable_level(file,exptype,logical_name,variable_table,plot_level))
   read_variable(file,exptype,logical_name,variable_table)
+}
+
+read_plot_data <- function(expname,exptype,logical_name,variable_table,type) {
+  field_day <- list()
+  for (d in seq_along(seqDate)) field_day[[d]] <- read_daily_variable(expname,exptype,logical_name,variable_table,type,seqDate[d])
+  nx <- dim(field_day[[1]])[1]
+  ny <- dim(field_day[[1]])[2]
+  nt <- sum(sapply(field_day,function(x) dim(x)[3]))
+  data <- array(unlist(field_day),dim=c(nx,ny,nt))
+  list(nx=nx,ny=ny,nt=nt,data=data)
 }
 
 ############################
@@ -98,11 +112,7 @@ for (type in plot_types) {
   if (length(vars1) == 0 && length(vars2) == 0) next
 
   if (length(vars1) != length(vars2)) {
-    stop(
-      "Different number of ",type," variables between experiments. ",
-      expname1,": ",paste(vars1,collapse=", ")," | ",
-      expname2,": ",paste(vars2,collapse=", ")
-    )
+    stop("Different number of ",type," variables between experiments. ",expname1,": ",paste(vars1,collapse=", ")," | ",expname2,": ",paste(vars2,collapse=", "))
   }
 
   #############################
@@ -196,14 +206,7 @@ for (type in plot_types) {
     plot_dir <- paste0(path_plot,plot_category,"/")
     dir.create(plot_dir,recursive=TRUE,showWarnings=FALSE)
 
-    file_out <- paste0(
-      plot_dir,
-      gsub(" ","",plot_title),"_",
-      variable1,"_vs_",variable2,"_",
-      expname1,"-",expname2,"_",
-      sDate,"-",eDate,".png"
-    )
-
+    file_out <- paste0(plot_dir,gsub(" ","",plot_title),"_",variable1,"_vs_",variable2,"_",expname1,"-",expname2,"_",sDate,"-",eDate,".png")
 
     dpi <- 300
     png(file_out,width=(0.2+3*3.9+0.8+0.8)*dpi,height=(0.23+0.15+2+2.5)*dpi)
@@ -319,3 +322,220 @@ for (type in plot_types) {
     message("---> Figure: ",file_out)
   }
 }
+
+############################
+### COMPOSITE DEP_* PLOTS ###
+############################
+if (length(dep_variables) > 0) {
+
+  for (dep_name in dep_variables) {
+
+    dep_suffix <- sub("^dep_","",dep_name)
+    flux_variables <- paste0(dep_fluxes,"_",dep_suffix)
+
+    available_fluxes <- dep_fluxes[
+      sapply(flux_variables,function(v) v %in% variables_exp1$logical_name && v %in% variables_exp2$logical_name)
+    ]
+
+    if (length(available_fluxes) == 0) {
+      message("---> Skipping ",dep_name,": no common deposition fluxes available.")
+      next
+    }
+
+    message("---> Plotting composite ",dep_name," using ",paste(available_fluxes,collapse=", "))
+
+    dep_data <- list()
+
+    for (flux in available_fluxes) {
+      logical_name <- paste0(flux,"_",dep_suffix)
+
+      d1 <- read_plot_data(expname1,exptype1,logical_name,variables_exp1,flux)
+      d2 <- read_plot_data(expname2,exptype2,logical_name,variables_exp2,flux)
+
+      if (d1$nx != d2$nx || d1$ny != d2$ny) stop("Spatial dimensions differ between experiments for ",logical_name)
+      if (d1$nt != d2$nt) stop("Time dimensions differ between experiments for ",logical_name)
+
+      file1 <- variable_file(logical_name,variables_exp1,expname1,seqDate[1])
+      ll <- read_lon_lat(file1)
+
+      field_var1 <- apply(d1$data,c(1,2),mean,na.rm=TRUE)
+      field_var2 <- apply(d2$data,c(1,2),mean,na.rm=TRUE)
+      tmean_var1 <- apply(d1$data,3,mean,na.rm=TRUE)
+      tmean_var2 <- apply(d2$data,3,mean,na.rm=TRUE)
+
+      tmean_tim <- seq.POSIXt(
+        from=as.POSIXct(paste0(substr(sDate,1,4),"-",substr(sDate,5,6),"-",substr(sDate,7,8)," 00:00:00"),tz="UTC"),
+        by="3 hours",
+        length.out=d1$nt
+      )
+
+      hour <- as.integer(format(tmean_tim,"%H"))
+      hours <- c(0,3,6,9,12,15,18,21)
+
+      dep_data[[flux]] <- list(
+        field_var1=field_var1,
+        field_var2=field_var2,
+        field_lon=ll$lon,
+        field_lat=ll$lat,
+        units=get_variable_units(file1,logical_name,variables_exp1),
+        field_breaks=pretty(c(field_var1,field_var2),n=12),
+        field_breaks_diff=pretty(field_var2-field_var1,n=12),
+        tmean_var1=tmean_var1,
+        tmean_var2=tmean_var2,
+        tmean_tim=tmean_tim,
+        dhourmean_var1=sapply(hours,function(h) mean(tmean_var1[hour == h],na.rm=TRUE)),
+        dhourmean_var2=sapply(hours,function(h) mean(tmean_var2[hour == h],na.rm=TRUE))
+      )
+    }
+
+    ###################
+    ### OUTPUT FILE ###
+    ###################
+    plot_category <- get_plot_category(dep_name)
+    plot_dir <- paste0(path_plot,plot_category,"/")
+    dir.create(plot_dir,recursive=TRUE,showWarnings=FALSE)
+
+    file_out <- paste0(plot_dir,gsub(" ","",plot_title),"_",dep_name,"_",expname1,"-",expname2,"_",sDate,"-",eDate,".png")
+
+    ################
+    ### LAYOUT ###
+    ################
+    nflux <- length(available_fluxes)
+
+    # Exact extension of the individual six-column layout:
+    # header row, experiment-heading row, one six-cell map row per flux, bottom TS/DC row.
+    mat <- matrix(0,nrow=nflux+3,ncol=6)
+    mat[1,] <- 1
+    mat[2,] <- 2:7
+
+    next_id <- 8
+    for (i in seq_len(nflux)) {
+      mat[2+i,] <- next_id:(next_id+5)
+      next_id <- next_id+6
+    }
+
+    ts_id <- next_id
+    dc_id <- next_id+1
+    mat[nflux+3,] <- c(ts_id,ts_id,ts_id,ts_id,dc_id,dc_id)
+
+    dpi <- 300
+    png(
+      file_out,
+      width=(0.2+3*3.9+0.8+0.8)*dpi,
+      height=(0.23+0.15+2*nflux+2.5)*dpi
+    )
+
+    layout(
+      mat=mat,
+      widths=c(0.2,3.9,3.9,0.8,3.9,0.8),
+      heights=c(0.23,0.15,rep(2,nflux),2.5)
+    )
+
+    ################
+    ### HEADINGS ###
+    ################
+    par(mai=c(0,0,0,0)); plot.new(); text(0.5,0.5,paste0("Experiments: ",expname1," VS ",expname2,"   |   Type: ",plot_title,"   |   Period: ",sDate,"-",eDate),col="grey50",cex=6,family="Century Gothic"); abline(h=c(0,1),col="grey50",lwd=3)
+    par(mai=c(0,0,0,0)); plot.new()
+    par(mai=c(0,0,0,0)); plot.new(); text(0.5,0.5,paste0(expname1," (",exptype1,") - ",dep_name),col="grey20",cex=4.5,family="Century Gothic")
+    par(mai=c(0,0,0,0)); plot.new(); text(0.5,0.5,paste0(expname2," (",exptype2,") - ",dep_name),col="grey20",cex=4.5,family="Century Gothic")
+    par(mai=c(0,0,0,0)); plot.new()
+    par(mai=c(0,0,0,0)); plot.new(); text(0.5,0.5,paste0(expname2," - ",expname1),col="grey20",cex=4.5,family="Century Gothic")
+    par(mai=c(0,0,0,0)); plot.new()
+
+    #################
+    ### MAP ROWS ###
+    #################
+    for (flux in available_fluxes) {
+      z <- dep_data[[flux]]
+
+      par(mai=c(0,0,0,0)); plot.new(); text(0.5,0.5,plot_type_title[[flux]],col="grey20",cex=5,family="Century Gothic",srt=90)
+
+      MapNC(filename_topo="",figure_box=figure_box,field_show_box=field_show_box,coastlineWorldFine_lwd=coastlineWorldFine_lwd,gridlines=gridlines,projection=projection,lonmax=lonmax,lonmin=lonmin,latmax=latmax,latmin=latmin,field_value=z$field_var1,field_lon=z$field_lon,field_lat=z$field_lat,field_pallete_name="TROPOMI_NEW",field_breaks=z$field_breaks,field_units=z$units,field_pallete_starting_alpha=100,field_show_legend=FALSE)
+
+      MapNC(filename_topo="",figure_box=figure_box,field_show_box=field_show_box,coastlineWorldFine_lwd=coastlineWorldFine_lwd,gridlines=gridlines,projection=projection,lonmax=lonmax,lonmin=lonmin,latmax=latmax,latmin=latmin,field_value=z$field_var2,field_lon=z$field_lon,field_lat=z$field_lat,field_pallete_name="TROPOMI_NEW",field_breaks=z$field_breaks,field_units=z$units,field_pallete_starting_alpha=100,field_show_legend=TRUE,field_legend_mai_right=1.8)
+
+      MapNC(filename_topo="",figure_box=figure_box,field_show_box=field_show_box,coastlineWorldFine_lwd=coastlineWorldFine_lwd,gridlines=gridlines,projection=projection,lonmax=lonmax,lonmin=lonmin,latmax=latmax,latmin=latmin,field_value=z$field_var2-z$field_var1,field_lon=z$field_lon,field_lat=z$field_lat,field_pallete_name="MNMB",field_breaks=z$field_breaks_diff,field_units=z$units,field_pallete_starting_alpha=100,field_show_legend=TRUE,field_legend_mai_right=1.8)
+    }
+
+    ##################
+    ### TIMESERIES ###
+    ##################
+    tmean_tim <- dep_data[[available_fluxes[1]]]$tmean_tim
+    x <- seq_along(tmean_tim)
+    all_ts <- unlist(lapply(available_fluxes,function(flux) c(dep_data[[flux]]$tmean_var1,dep_data[[flux]]$tmean_var2)))
+
+    par(mai=c(2,2,0,0.4),family="Century Gothic")
+
+    yseq <- axis_ticks(all_ts,n=10)
+    pad <- diff(range(yseq$breaks))*0.05
+    if (!is.finite(pad) || pad == 0) pad <- max(abs(yseq$breaks),na.rm=TRUE)*0.05
+    if (!is.finite(pad) || pad == 0) pad <- 1
+
+    plot(x,type="n",axes=FALSE,ann=FALSE,ylim=c(min(yseq$breaks)-pad,max(yseq$breaks)+pad),yaxs="i")
+    mtext("Time",side=1,line=12,cex=3.5)
+
+    IDx_labels <- which(format(tmean_tim,"%H") == "00" & format(tmean_tim,"%d") %in% c("01","05","10","15","20","25"))
+    IDx_labels <- unique(c(1,IDx_labels,length(tmean_tim)))
+
+    axis(1,at=x[IDx_labels],labels=format(tmean_tim[IDx_labels],"%Y-%m-%d"),cex.axis=4,line=4,lty=0)
+    axis(1,at=x[IDx_labels],labels=FALSE,tck=0.01)
+    axis(1,at=x[IDx_labels],labels=FALSE,tck=-0.01)
+    axis(2,at=yseq$breaks,labels=yseq$labels,las=1,cex.axis=3)
+
+    box(lwd=2)
+    abline(h=yseq$breaks,lwd=1,col="grey")
+    abline(v=x[IDx_labels],lwd=1,col="grey")
+
+    for (flux in available_fluxes) {
+      lines(x,dep_data[[flux]]$tmean_var1,lwd=5,col=dep_flux_colors[flux],lty=1)
+      lines(x,dep_data[[flux]]$tmean_var2,lwd=5,col=dep_flux_colors[flux],lty=2)
+    }
+
+    legend("topleft",legend=toupper(available_fluxes),lwd=6,col=dep_flux_colors[available_fluxes],lty=1,cex=2.3,bty="n")
+    legend("topright",legend=c(expname1,expname2),lwd=6,col="grey20",lty=c(1,2),cex=2.3,bty="n")
+
+    ###################
+    ### DAILY CYCLE ###
+    ###################
+    all_dc <- unlist(lapply(available_fluxes,function(flux) c(dep_data[[flux]]$dhourmean_var1,dep_data[[flux]]$dhourmean_var2)))
+
+    par(mai=c(2,2,0,0.4),family="Century Gothic")
+
+    yseq <- axis_ticks(all_dc,n=10)
+    pad <- diff(range(yseq$breaks))*0.05
+    if (!is.finite(pad) || pad == 0) pad <- max(abs(yseq$breaks),na.rm=TRUE)*0.05
+    if (!is.finite(pad) || pad == 0) pad <- 1
+
+    plot(1:8,type="n",axes=FALSE,ann=FALSE,ylim=c(min(yseq$breaks)-pad,max(yseq$breaks)+pad),yaxs="i")
+    mtext("Time (3 hourly UTC)",side=1,line=12,cex=3.5)
+
+    axis(1,at=1:8,labels=c("00","03","06","09","12","15","18","21"),cex.axis=4,line=4,lty=0)
+    axis(1,at=1:8,labels=FALSE,tck=0.01)
+    axis(1,at=1:8,labels=FALSE,tck=-0.01)
+    axis(2,at=yseq$breaks,labels=yseq$labels,las=1,cex.axis=3)
+
+    box(lwd=2)
+    abline(h=yseq$breaks,lwd=1,col="grey")
+    abline(v=1:8,lwd=1,col="grey")
+
+    for (flux in available_fluxes) {
+      lines(1:8,dep_data[[flux]]$dhourmean_var1,lwd=5,col=dep_flux_colors[flux],lty=1)
+      lines(1:8,dep_data[[flux]]$dhourmean_var2,lwd=5,col=dep_flux_colors[flux],lty=2)
+    }
+
+    legend("topleft",legend=toupper(available_fluxes),lwd=6,col=dep_flux_colors[available_fluxes],lty=1,cex=2.3,bty="n")
+    legend("topright",legend=c(expname1,expname2),lwd=6,col="grey20",lty=c(1,2),cex=2.3,bty="n")
+
+    dev.off()
+
+    ################
+    ### COMPRESS ###
+    ################
+    file_tmp <- paste0(file_out,".tmp.png")
+    compress(file_in=file_out,file_out=file_tmp)
+    file.rename(file_tmp,file_out)
+
+    message("---> Composite figure: ",file_out)
+  }
+}
+

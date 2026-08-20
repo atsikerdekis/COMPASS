@@ -1,15 +1,15 @@
 ### EXPERIMENT SETTINGS
-expname1  <- "b30q"
+expname1  <- "b30k"
 exptype1  <- "HAM"
 expclass1 <- "nl"
 
-expname2  <- "b30b"
+expname2  <- "b30k"
 exptype2  <- "HAM"
 expclass2 <- "nl"
 
 sDate   <- "20181201"
 eDate   <- "20181203"
-runtype <- "download" # plot | download
+runtype <- "plot"
 
 ### DOWNLOAD SETTINGS
 NumberOfDownloadJobs <- 1

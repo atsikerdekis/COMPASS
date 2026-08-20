@@ -21,7 +21,7 @@ seqDate <- format(seq.Date(from=as.Date(sDate,format="%Y%m%d"),to=as.Date(eDate,
 ########################
 ### VARIABLE FAMILIES ###
 ########################
-plot_types <- c("mmr","ddp","sdm","wdl","wdc","mss")
+plot_types <- c("mmr","ddp","sdm","wdl","wdc","mss","ngt")
 
 plot_type_title <- c(
   mmr = "Mass mixing ratio",
@@ -29,7 +29,8 @@ plot_type_title <- c(
   sdm = "Sedimentation",
   wdl = "Large-scale wet dep.",
   wdc = "Convective wet dep.",
-  mss = "Column mass burden"
+  mss = "Column mass burden",
+  ngt = "Negative fixer"
 )
 
 ########################
@@ -68,6 +69,14 @@ get_variable_units <- function(file,logical_name,variable_table) {
   nc_close(nc)
   if (is.null(units) || is.na(units) || units == "") units <- " "
   units
+}
+
+get_plot_category <- function(logical_name) {
+  suffix <- sub("^[^_]+_","",logical_name)
+  if (suffix %in% c("soluble","insoluble")) return("per_solubility")
+  if (suffix %in% c("ns","ks","as","cs","ki","ai","ci")) return("per_mode")
+  if (grepl("_(ns|ks|as|cs|ki|ai|ci)$",suffix)) return("per_tracer")
+  return("per_species")
 }
 
 read_daily_variable <- function(expname,exptype,logical_name,variable_table,type,date) {
@@ -183,13 +192,18 @@ for (type in plot_types) {
     ###################
     ### OUTPUT FILE ###
     ###################
+    plot_category <- get_plot_category(variable1)
+    plot_dir <- paste0(path_plot,plot_category,"/")
+    dir.create(plot_dir,recursive=TRUE,showWarnings=FALSE)
+
     file_out <- paste0(
-      path_plot,
+      plot_dir,
       gsub(" ","",plot_title),"_",
       variable1,"_vs_",variable2,"_",
       expname1,"-",expname2,"_",
       sDate,"-",eDate,".png"
     )
+
 
     dpi <- 300
     png(file_out,width=(0.2+3*3.9+0.8+0.8)*dpi,height=(0.23+0.15+2+2.5)*dpi)

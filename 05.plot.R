@@ -58,6 +58,42 @@ get_type_variables <- function(variable_table,type) {
   x[x %in% requested_individual_variables]
 }
 
+nice_positive_max <- function(x,n=6) {
+  xmax <- max(x,na.rm=TRUE)
+  if (!is.finite(xmax) || xmax <= 0) return(1)
+  max(pretty(c(0,xmax),n=n))
+}
+
+positive_breaks <- function(x,ncolors=200) {
+  seq(0,nice_positive_max(x),length.out=ncolors+1)
+}
+
+difference_breaks <- function(x,ncolors=200) {
+  xmax <- max(abs(x),na.rm=TRUE)
+  if (!is.finite(xmax) || xmax == 0) xmax <- 1
+  xmax <- max(abs(pretty(c(-xmax,xmax),n=6)))
+
+  breaks <- seq(-xmax,xmax,length.out=ncolors+1)
+  breaks[which.min(abs(breaks))] <- 0
+
+  breaks
+}
+
+positive_axis_ticks <- function(x,n=10) {
+  xmax <- nice_positive_max(x,n)
+  ticks <- pretty(c(0,xmax),n=n)
+  ticks <- ticks[ticks >= 0 & ticks <= xmax]
+  ticks <- unique(c(0,ticks,xmax))
+  max_abs <- max(abs(ticks))
+  min_abs <- if (all(ticks == 0)) 0 else min(abs(ticks[ticks != 0]))
+  if (max_abs >= 100 || (min_abs > 0 && min_abs < 0.01)) labels <- sprintf("%.2e",ticks) else {
+    step <- min(diff(ticks))
+    ndigits <- if (step > 0) max(2,-floor(log10(step))) else 2
+    labels <- formatC(ticks,format="f",digits=ndigits)
+  }
+  list(breaks=ticks,labels=labels)
+}
+
 read_lon_lat <- function(file) {
   nc <- nc_open(file)
   lon <- ncvar_get(nc,"longitude")
@@ -66,14 +102,11 @@ read_lon_lat <- function(file) {
   list(lon=lon,lat=lat)
 }
 
-get_variable_units <- function(file,logical_name,variable_table) {
-  rows <- variable_table[variable_table$logical_name == logical_name,,drop=FALSE]
-  nc <- nc_open(file)
-  ncname <- grib_to_ncname(rows$grib[1])
-  units <- ncatt_get(nc,ncname,"units")$value
-  nc_close(nc)
-  if (is.null(units) || is.na(units) || units == "") units <- " "
-  units
+get_plot_units <- function(type) {
+  if (type == "mmr") return("kg kg^-1")
+  if (type == "mss") return("kg m^-2")
+  if (type %in% c("ddp","sdm","wdl","wdc","ngt")) return("kg m^-2 s^-1")
+  " "
 }
 
 get_plot_category <- function(logical_name) {
@@ -112,6 +145,10 @@ read_plot_data <- function(expname,exptype,logical_name,variable_table,type) {
   nt <- sum(sapply(field_day,function(x) dim(x)[3]))
   data <- array(unlist(field_day),dim=c(nx,ny,nt))
   list(nx=nx,ny=ny,nt=nt,data=data)
+}
+
+get_display_type <- function(logical_name) {
+  toupper(sub("^[^_]+_","",logical_name))
 }
 
 ############################
@@ -175,7 +212,7 @@ for (type in plot_types) {
     field_lon <- ll$lon
     field_lat <- ll$lat
 
-    units <- get_variable_units(file1,variable1,variables_exp1)
+    units <- get_plot_units(type)
 
     ####################
     ### TEMPORAL MEAN ###
@@ -209,8 +246,8 @@ for (type in plot_types) {
     ###################
     ### MAP BREAKS ###
     ###################
-    field_breaks <- pretty(c(field_var1,field_var2),n=12)
-    field_breaks_diff <- pretty(field_var2-field_var1,n=12)
+    field_breaks <- positive_breaks(c(field_var1,field_var2),ncolors=200)
+    field_breaks_diff <- difference_breaks(field_var2-field_var1,ncolors=200)
 
     ###################
     ### OUTPUT FILE ###
@@ -233,10 +270,10 @@ for (type in plot_types) {
     ################
     ### HEADINGS ###
     ################
-    par(mai=c(0,0,0,0)); plot.new(); text(0.5,0.5,paste0("Experiments: ",expname1," VS ",expname2,"   |   Type: ",plot_title,"   |   Period: ",sDate,"-",eDate),col="grey50",cex=6,family="Century Gothic"); abline(h=c(0,1),col="grey50",lwd=3)
+    par(mai=c(0,0,0,0)); plot.new(); text(0.5,0.5,paste0("Experiments: ",expname1," VS ",expname2,"   |   Type: ",get_display_type(variable1),"   |   Period: ",sDate,"-",eDate),col="grey50",cex=6,family="Century Gothic"); abline(h=c(0,1),col="grey50",lwd=3)
     par(mai=c(0,0,0,0)); plot.new()
-    par(mai=c(0,0,0,0)); plot.new(); text(0.5,0.5,paste0(expname1," (",exptype1,") - ",variable1),col="grey20",cex=4.5,family="Century Gothic")
-    par(mai=c(0,0,0,0)); plot.new(); text(0.5,0.5,paste0(expname2," (",exptype2,") - ",variable2),col="grey20",cex=4.5,family="Century Gothic")
+    par(mai=c(0,0,0,0)); plot.new(); text(0.5,0.5,paste0(expname1," (",exptype1,")"),col="grey20",cex=4.5,family="Century Gothic")
+    par(mai=c(0,0,0,0)); plot.new(); text(0.5,0.5,paste0(expname2," (",exptype2,")"),col="grey20",cex=4.5,family="Century Gothic")
     par(mai=c(0,0,0,0)); plot.new()
     par(mai=c(0,0,0,0)); plot.new(); text(0.5,0.5,paste0(expname2," - ",expname1),col="grey20",cex=4.5,family="Century Gothic")
     par(mai=c(0,0,0,0)); plot.new()
@@ -254,12 +291,12 @@ for (type in plot_types) {
     #################
     ### MAP EXP 2 ###
     #################
-    MapNC(filename_topo="",figure_box=figure_box,field_show_box=field_show_box,coastlineWorldFine_lwd=coastlineWorldFine_lwd,gridlines=gridlines,projection=projection,lonmax=lonmax,lonmin=lonmin,latmax=latmax,latmin=latmin,field_value=field_var2,field_lon=field_lon,field_lat=field_lat,field_pallete_name="TROPOMI_NEW",field_breaks=field_breaks,field_units=units,field_pallete_starting_alpha=100,field_show_legend=TRUE,field_legend_mai_right=1.8)
+    MapNC(filename_topo="",figure_box=figure_box,field_show_box=field_show_box,coastlineWorldFine_lwd=coastlineWorldFine_lwd,gridlines=gridlines,projection=projection,lonmax=lonmax,lonmin=lonmin,latmax=latmax,latmin=latmin,field_value=field_var2,field_lon=field_lon,field_lat=field_lat,field_pallete_name="TROPOMI_NEW",field_breaks=field_breaks,field_units=units,field_pallete_starting_alpha=100,field_show_legend=TRUE,field_legend_mai_right=1.8,field_legend_nlabels=7)
 
     ######################
     ### DIFFERENCE MAP ###
     ######################
-    MapNC(filename_topo="",figure_box=figure_box,field_show_box=field_show_box,coastlineWorldFine_lwd=coastlineWorldFine_lwd,gridlines=gridlines,projection=projection,lonmax=lonmax,lonmin=lonmin,latmax=latmax,latmin=latmin,field_value=field_var2-field_var1,field_lon=field_lon,field_lat=field_lat,field_pallete_name="MNMB",field_breaks=field_breaks_diff,field_units=units,field_pallete_starting_alpha=100,field_show_legend=TRUE,field_legend_mai_right=1.8)
+    MapNC(filename_topo="",figure_box=figure_box,field_show_box=field_show_box,coastlineWorldFine_lwd=coastlineWorldFine_lwd,gridlines=gridlines,projection=projection,lonmax=lonmax,lonmin=lonmin,latmax=latmax,latmin=latmin,field_value=field_var2-field_var1,field_lon=field_lon,field_lat=field_lat,field_pallete_name="MNMB",field_breaks=field_breaks_diff,field_units=units,field_pallete_starting_alpha=100,field_show_legend=TRUE,field_legend_mai_right=1.8,field_legend_nlabels=7)
 
     ##################
     ### TIMESERIES ###
@@ -267,12 +304,8 @@ for (type in plot_types) {
     par(mai=c(2,2,0,0.4),family="Century Gothic")
 
     x <- seq_along(tmean_tim)
-    yseq <- axis_ticks(c(tmean_var1,tmean_var2),n=10)
-    pad <- diff(range(yseq$breaks))*0.05
-    if (!is.finite(pad) || pad == 0) pad <- max(abs(yseq$breaks),na.rm=TRUE)*0.05
-    if (!is.finite(pad) || pad == 0) pad <- 1
-
-    plot(x,type="n",axes=FALSE,ann=FALSE,ylim=c(min(yseq$breaks)-pad,max(yseq$breaks)+pad),yaxs="i")
+    yseq <- positive_axis_ticks(c(tmean_var1,tmean_var2),n=10)
+    plot(x,type="n",axes=FALSE,ann=FALSE,ylim=c(0,max(yseq$breaks)),yaxs="i")
     mtext("Time",side=1,line=12,cex=3.5)
 
     IDx_labels <- which(format(tmean_tim,"%H") == "00" & format(tmean_tim,"%d") %in% c("01","05","10","15","20","25"))
@@ -298,13 +331,8 @@ for (type in plot_types) {
     ### DAILY CYCLE ###
     ###################
     par(mai=c(2,2,0,0.4),family="Century Gothic")
-
-    yseq <- axis_ticks(c(dhourmean_var1,dhourmean_var2),n=10)
-    pad <- diff(range(yseq$breaks))*0.05
-    if (!is.finite(pad) || pad == 0) pad <- max(abs(yseq$breaks),na.rm=TRUE)*0.05
-    if (!is.finite(pad) || pad == 0) pad <- 1
-
-    plot(1:8,type="n",axes=FALSE,ann=FALSE,ylim=c(min(yseq$breaks)-pad,max(yseq$breaks)+pad),yaxs="i")
+    yseq <- positive_axis_ticks(c(dhourmean_var1,dhourmean_var2),n=10)
+    plot(1:8,type="n",axes=FALSE,ann=FALSE,ylim=c(0,max(yseq$breaks)),yaxs="i")
     mtext("Time (3 hourly UTC)",side=1,line=12,cex=3.5)
 
     axis(1,at=1:8,labels=c("00","03","06","09","12","15","18","21"),cex.axis=4,line=4,lty=0)
@@ -390,9 +418,9 @@ if (length(dep_variables) > 0) {
         field_var2=field_var2,
         field_lon=ll$lon,
         field_lat=ll$lat,
-        units=get_variable_units(file1,logical_name,variables_exp1),
-        field_breaks=pretty(c(field_var1,field_var2),n=12),
-        field_breaks_diff=pretty(field_var2-field_var1,n=12),
+        units=get_plot_units(flux),
+        field_breaks=positive_breaks(c(field_var1,field_var2),ncolors=200),
+        field_breaks_diff=difference_breaks(field_var2-field_var1,ncolors=200),
         tmean_var1=tmean_var1,
         tmean_var2=tmean_var2,
         tmean_tim=tmean_tim,
@@ -447,10 +475,10 @@ if (length(dep_variables) > 0) {
     ################
     ### HEADINGS ###
     ################
-    par(mai=c(0,0,0,0)); plot.new(); text(0.5,0.5,paste0("Experiments: ",expname1," VS ",expname2,"   |   Type: ",plot_title,"   |   Period: ",sDate,"-",eDate),col="grey50",cex=6,family="Century Gothic"); abline(h=c(0,1),col="grey50",lwd=3)
+    par(mai=c(0,0,0,0)); plot.new(); text(0.5,0.5,paste0("Experiments: ",expname1," VS ",expname2,"   |   Type: ",get_display_type(dep_name),"   |   Period: ",sDate,"-",eDate),col="grey50",cex=6,family="Century Gothic"); abline(h=c(0,1),col="grey50",lwd=3)
     par(mai=c(0,0,0,0)); plot.new()
-    par(mai=c(0,0,0,0)); plot.new(); text(0.5,0.5,paste0(expname1," (",exptype1,") - ",dep_name),col="grey20",cex=4.5,family="Century Gothic")
-    par(mai=c(0,0,0,0)); plot.new(); text(0.5,0.5,paste0(expname2," (",exptype2,") - ",dep_name),col="grey20",cex=4.5,family="Century Gothic")
+    par(mai=c(0,0,0,0)); plot.new(); text(0.5,0.5,paste0(expname1," (",exptype1,")"),col="grey20",cex=4.5,family="Century Gothic")
+    par(mai=c(0,0,0,0)); plot.new(); text(0.5,0.5,paste0(expname2," (",exptype2,")"),col="grey20",cex=4.5,family="Century Gothic")
     par(mai=c(0,0,0,0)); plot.new()
     par(mai=c(0,0,0,0)); plot.new(); text(0.5,0.5,paste0(expname2," - ",expname1),col="grey20",cex=4.5,family="Century Gothic")
     par(mai=c(0,0,0,0)); plot.new()
@@ -465,9 +493,9 @@ if (length(dep_variables) > 0) {
 
       MapNC(filename_topo="",figure_box=figure_box,field_show_box=field_show_box,coastlineWorldFine_lwd=coastlineWorldFine_lwd,gridlines=gridlines,projection=projection,lonmax=lonmax,lonmin=lonmin,latmax=latmax,latmin=latmin,field_value=z$field_var1,field_lon=z$field_lon,field_lat=z$field_lat,field_pallete_name="TROPOMI_NEW",field_breaks=z$field_breaks,field_units=z$units,field_pallete_starting_alpha=100,field_show_legend=FALSE)
 
-      MapNC(filename_topo="",figure_box=figure_box,field_show_box=field_show_box,coastlineWorldFine_lwd=coastlineWorldFine_lwd,gridlines=gridlines,projection=projection,lonmax=lonmax,lonmin=lonmin,latmax=latmax,latmin=latmin,field_value=z$field_var2,field_lon=z$field_lon,field_lat=z$field_lat,field_pallete_name="TROPOMI_NEW",field_breaks=z$field_breaks,field_units=z$units,field_pallete_starting_alpha=100,field_show_legend=TRUE,field_legend_mai_right=1.8)
+      MapNC(filename_topo="",figure_box=figure_box,field_show_box=field_show_box,coastlineWorldFine_lwd=coastlineWorldFine_lwd,gridlines=gridlines,projection=projection,lonmax=lonmax,lonmin=lonmin,latmax=latmax,latmin=latmin,field_value=z$field_var2,field_lon=z$field_lon,field_lat=z$field_lat,field_pallete_name="TROPOMI_NEW",field_breaks=z$field_breaks,field_units=z$units,field_pallete_starting_alpha=100,field_show_legend=TRUE,field_legend_mai_right=1.8,field_legend_nlabels=7)
 
-      MapNC(filename_topo="",figure_box=figure_box,field_show_box=field_show_box,coastlineWorldFine_lwd=coastlineWorldFine_lwd,gridlines=gridlines,projection=projection,lonmax=lonmax,lonmin=lonmin,latmax=latmax,latmin=latmin,field_value=z$field_var2-z$field_var1,field_lon=z$field_lon,field_lat=z$field_lat,field_pallete_name="MNMB",field_breaks=z$field_breaks_diff,field_units=z$units,field_pallete_starting_alpha=100,field_show_legend=TRUE,field_legend_mai_right=1.8)
+      MapNC(filename_topo="",figure_box=figure_box,field_show_box=field_show_box,coastlineWorldFine_lwd=coastlineWorldFine_lwd,gridlines=gridlines,projection=projection,lonmax=lonmax,lonmin=lonmin,latmax=latmax,latmin=latmin,field_value=z$field_var2-z$field_var1,field_lon=z$field_lon,field_lat=z$field_lat,field_pallete_name="MNMB",field_breaks=z$field_breaks_diff,field_units=z$units,field_pallete_starting_alpha=100,field_show_legend=TRUE,field_legend_mai_right=1.8,field_legend_nlabels=7)
     }
 
     ##################

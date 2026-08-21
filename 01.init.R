@@ -3,7 +3,7 @@
 ##################
 username <- system("whoami",intern=TRUE)
 
-path_function <- paste0("/perm/",username,"/cams2_35/COMPASS/code/function/")
+path_function <- paste0("/perm/",username,"/cams2_35/COMPASS/code_refactored/function/")
 path_plot     <- paste0("/perm/",username,"/cams2_35/COMPASS/plot/",expname1,"_",expname2,"_",sDate,"-",eDate,"/")
 path_log      <- paste0("/perm/",username,"/cams2_35/COMPASS/log/")
 path_data     <- paste0("/scratch/",username,"/cams2_35/data/")

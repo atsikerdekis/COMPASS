@@ -25,6 +25,7 @@ MapNC <- function(
     field_units="",
     legend_units_potition=1,
     field_legend_cex=3.5,
+    field_legend_nlabels=NULL,
     field_legend_mai_right=1.5,
     field_legend_mai_top=0.5,
     field_show_box=FALSE,
@@ -779,8 +780,16 @@ MapNC <- function(
     par(bg="#FFFFFFFF")
     par(mai=c(0.5,0.5,0.5,0.5))
     try({drawPalette(at=1:length(field_breaks), labels=field_breaks, fullpage=TRUE, col=field_pallete$col, las=1, mai=c(0,0.2,field_legend_mai_top,field_legend_mai_right), drawTriangles=T, cex=0)}, silent =T)
-    mylegend_at     <- 1:length(field_breaks)
-    mylegend_labels <- field_breaks
+    if (is.null(field_legend_nlabels)) {
+      mylegend_at <- seq_along(field_breaks)
+    } else {
+      mylegend_at <- unique(round(seq(1,length(field_breaks),length.out=field_legend_nlabels)))
+    }
+    mylegend_labels <- field_breaks[mylegend_at]
+    if (min(field_breaks,na.rm=TRUE) < 0 && max(field_breaks,na.rm=TRUE) > 0) {
+      izero <- which.min(abs(mylegend_labels))
+      mylegend_labels[izero] <- 0
+    }
     if (legend_decimals==T) { axis(4, at=mylegend_at, labels=format(mylegend_labels, scientific=TRUE, digits=2), cex.axis=field_legend_cex, tick=T, las=1, family="Century Gothic") }
     if (legend_decimals==F) { axis(4, at=mylegend_at, labels=mylegend_labels, cex.axis=field_legend_cex, tick=T, las=1, family="Century Gothic") }
     axis(3,legend_units_potition, field_units, las=1, line=2.5, tick=F, cex.axis=field_legend_cex, family="Century Gothic")

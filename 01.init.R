@@ -148,19 +148,27 @@ make_result <- function(logical_name,idx,grib_column,table) {
   )
 }
 
-##############################
+###############
+### HELPERS ###
+###############
+get_variable_prefix <- function(logical_name) {
+  if (startsWith(logical_name,"mss_from_mr_")) return("mss_from_mr")
+  sub("_.*$","",logical_name)
+}
+
+get_variable_suffix <- function(logical_name) {
+  if (startsWith(logical_name,"mss_from_mr_")) return(sub("^mss_from_mr_","",logical_name))
+  sub("^[^_]+_","",logical_name)
+}
+
+###############################
 ### HAM VARIABLE RESOLUTION ###
-##############################
+###############################
 resolve_HAM_variable <- function(logical_name) {
-
-  prefix <- sub("_.*$","",logical_name)
-
-  if (!prefix %in% names(variable_columns)) {
-    stop("Unsupported variable prefix '",prefix,"' in ",logical_name)
-  }
-
-  suffix <- sub("^[^_]+_","",logical_name)
-  grib_column <- variable_columns[[prefix]]
+  prefix <- get_variable_prefix(logical_name)
+  if (!prefix %in% c(names(variable_columns),"mss_from_mr")) { stop("Unsupported variable prefix '",prefix,"' in ",logical_name) }
+  suffix <- get_variable_suffix(logical_name)
+  grib_column <- if (prefix == "mss_from_mr") "grib" else variable_columns[[prefix]]
 
   ############################
   ### 1. EXACT MODE/SPECIES ###
@@ -243,10 +251,9 @@ resolve_HAM_variable <- function(logical_name) {
   stop("HAM variable '",logical_name,"' could not be resolved.")
 }
 
-##############################
-##############################
+###############################
 ### AER VARIABLE RESOLUTION ###
-##############################
+###############################
 
 aer_names <- normalize_csv_name(grib_AER$name)
 
@@ -266,15 +273,10 @@ AER_species_aliases <- list(
 common_HAM_AER_species <- names(AER_species_aliases)
 
 resolve_AER_variable <- function(logical_name) {
-
-  prefix <- sub("_.*$","",logical_name)
-
-  if (!prefix %in% names(variable_columns)) {
-    stop("Unsupported variable prefix '",prefix,"' in ",logical_name)
-  }
-
-  suffix <- sub("^[^_]+_","",logical_name)
-  grib_column <- variable_columns[[prefix]]
+  prefix <- get_variable_prefix(logical_name)
+  if (!prefix %in% c(names(variable_columns),"mss_from_mr")) { stop("Unsupported variable prefix '",prefix,"' in ",logical_name) }
+  suffix <- get_variable_suffix(logical_name)
+  grib_column <- if (prefix == "mss_from_mr") "grib" else variable_columns[[prefix]]
 
   ########################
   ### 1. SPECIES TOTAL ###

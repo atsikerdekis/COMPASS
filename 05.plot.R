@@ -21,7 +21,7 @@ seqDate <- format(seq.Date(from=as.Date(sDate,format="%Y%m%d"),to=as.Date(eDate,
 ########################
 ### VARIABLE FAMILIES ###
 ########################
-plot_types <- c("mmr","ddp","sdm","wdl","wdc","mss","ngt")
+plot_types <- c("mmr","ddp","sdm","wdl","wdc","mss","mss_from_mr","ngt")
 
 plot_type_title <- c(
   mmr = "Mass mixing ratio",
@@ -30,6 +30,7 @@ plot_type_title <- c(
   wdl = "Large-scale wet dep.",
   wdc = "Convective wet dep.",
   mss = "Column mass burden",
+  mss_from_mr = "Column burden from mixing ratio",
   ngt = "Negative fixer"
 )
 
@@ -54,7 +55,16 @@ axis_ticks <- function(x,n=5,small_thresh=0.01,large_thresh=100) {
 }
 
 get_type_variables <- function(variable_table,type) {
-  x <- unique(variable_table$logical_name[startsWith(variable_table$logical_name,paste0(type,"_"))])
+  if (type == "mss") {
+    x <- unique(variable_table$logical_name[
+      startsWith(variable_table$logical_name,"mss_") &
+      !startsWith(variable_table$logical_name,"mss_from_mr_")
+    ])
+  } else {
+    x <- unique(variable_table$logical_name[
+      startsWith(variable_table$logical_name,paste0(type,"_"))
+    ])
+  }
   x[x %in% requested_individual_variables]
 }
 
@@ -104,14 +114,14 @@ read_lon_lat <- function(file) {
 
 get_plot_units <- function(type) {
   if (type == "mmr") return("kg kg^-1")
-  if (type == "mss") return("kg m^-2")
+  if (type %in% c("mss","mss_from_mr")) return("kg m^-2")
   if (type %in% c("ddp","sdm","wdl","wdc","ngt")) return("kg m^-2 s^-1")
   " "
 }
 
 get_plot_category <- function(logical_name) {
 
-  suffix <- sub("^[^_]+_","",logical_name)
+  suffix <- get_variable_suffix(logical_name)
 
   ### HAM vs AER: only common species comparisons are allowed
   if (exptype1 != exptype2) return("per_species")
@@ -134,6 +144,7 @@ read_daily_variable <- function(expname,exptype,logical_name,variable_table,type
   file <- variable_file(logical_name,variable_table,expname,date)
   if (!file.exists(file)) stop("Input file not found: ",file)
   if (type == "mmr") return(read_variable_level(file,exptype,logical_name,variable_table,plot_level))
+  if (type == "mss_from_mr") { return(read_column_burden(file,exptype,logical_name,variable_table)) }
   read_variable(file,exptype,logical_name,variable_table)
 }
 

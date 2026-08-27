@@ -91,3 +91,48 @@ read_variable_level <- function(file,exptype,logical_name,variable_table,level) 
 
   field
 }
+
+### Read column burden
+read_column_burden <- function(file,exptype,logical_name,variable_table) {
+
+  rows <- variable_table[variable_table$logical_name == logical_name,,drop=FALSE]
+  if (nrow(rows) == 0) stop("Variable '",logical_name,"' is not available for ",exptype)
+
+  nc <- nc_open(file)
+  on.exit(nc_close(nc))
+
+  levels <- ncvar_get(nc,"level")
+
+  dp <- c(
+    50,100,150,200,250,650,1000,1500,2000,2500,
+    4000,5000,5000,5000,7500,10000,15000,17500,
+    11250,7500,5075
+  )
+
+  if (length(levels) != length(dp)) stop("Unexpected number of pressure levels in ",file)
+
+  g <- 9.80665
+  burden <- NULL
+
+  for (i in seq_len(nrow(rows))) {
+
+    ncname <- grib_to_ncname(rows$grib[i])
+
+    if (!ncname %in% names(nc$var)) {
+      stop("NetCDF variable '",ncname,"' for ",logical_name," not found in ",file)
+    }
+
+    q <- ncvar_get(nc,ncname)
+
+    temp <- apply(
+      sweep(q,3,dp/g,"*"),
+      c(1,2,4),
+      sum,
+      na.rm=TRUE
+    )
+
+    if (is.null(burden)) burden <- temp else burden <- burden + temp
+  }
+
+  burden
+}

@@ -333,10 +333,10 @@ for (type in plot_types) {
 
     lines(x,tmean_var1,lwd=8); points(x,tmean_var1,pch=19,cex=2.8)
     lines(x,tmean_var2,lwd=8); points(x,tmean_var2,pch=19,cex=2.8)
-    lines(x,tmean_var1,lwd=5,col="red"); points(x,tmean_var1,pch=19,cex=2.2,col="red")
-    lines(x,tmean_var2,lwd=5,col="blue"); points(x,tmean_var2,pch=19,cex=2.2,col="blue")
+    lines(x,tmean_var1,lwd=5,col="blue"); points(x,tmean_var1,pch=19,cex=2.2,col="blue")
+    lines(x,tmean_var2,lwd=5,col="red"); points(x,tmean_var2,pch=19,cex=2.2,col="red")
 
-    legend("top",legend=c(paste0(expname1," (",variable1,")"),paste0(expname2," (",variable2,")")),lwd=7,pch=19,col=c("red","blue"),cex=3)
+    legend("top",legend=c(paste0(expname1," (",variable1,")"),paste0(expname2," (",variable2,")")),lwd=7,pch=19,col=c("blue","red"),cex=3)
 
     ###################
     ### DAILY CYCLE ###
@@ -357,10 +357,10 @@ for (type in plot_types) {
 
     lines(1:8,dhourmean_var1,lwd=8); points(1:8,dhourmean_var1,pch=19,cex=2.8)
     lines(1:8,dhourmean_var2,lwd=8); points(1:8,dhourmean_var2,pch=19,cex=2.8)
-    lines(1:8,dhourmean_var1,lwd=5,col="red"); points(1:8,dhourmean_var1,pch=19,cex=2.2,col="red")
-    lines(1:8,dhourmean_var2,lwd=5,col="blue"); points(1:8,dhourmean_var2,pch=19,cex=2.2,col="blue")
+    lines(1:8,dhourmean_var1,lwd=5,col="blue"); points(1:8,dhourmean_var1,pch=19,cex=2.2,col="blue")
+    lines(1:8,dhourmean_var2,lwd=5,col="red"); points(1:8,dhourmean_var2,pch=19,cex=2.2,col="red")
 
-    legend("top",legend=c(paste0(expname1," (",variable1,")"),paste0(expname2," (",variable2,")")),lwd=7,pch=19,col=c("red","blue"),cex=3)
+    legend("top",legend=c(paste0(expname1," (",variable1,")"),paste0(expname2," (",variable2,")")),lwd=7,pch=19,col=c("blue","red"),cex=3)
 
     dev.off()
 

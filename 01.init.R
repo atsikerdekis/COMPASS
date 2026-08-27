@@ -330,7 +330,7 @@ if (mixed_aerosol_schemes) {
 
   for (logical_name in variables_for_resolution) {
 
-    suffix <- sub("^[^_]+_","",logical_name)
+    suffix <- get_variable_suffix(logical_name)
 
     if (!suffix %in% common_HAM_AER_species) {
       stop(

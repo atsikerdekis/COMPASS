@@ -159,7 +159,7 @@ read_plot_data <- function(expname,exptype,logical_name,variable_table,type) {
 }
 
 get_display_type <- function(logical_name) {
-  toupper(sub("^[^_]+_","",logical_name))
+  toupper(get_variable_suffix(logical_name))
 }
 
 ############################

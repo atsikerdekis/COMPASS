@@ -188,12 +188,14 @@ global_flux_tg_day <- function(field,lon,lat) {
 
 read_massdiag_column <- function(expname,logical_name,variable_table,date,column) {
   file <- massdiag_file(expname,date)
-  if (!file.exists(file)) return(NA_real_)
-
+  if (!file.exists(file)) {
+    warning("MASSDIA file not found: ",file)
+    return(NA_real_)
+  }
   rows <- variable_table[variable_table$logical_name == logical_name,,drop=FALSE]
   if (nrow(rows) == 0) stop("No resolved tracers for MASSDIA variable ",logical_name)
 
-  tracer_names <- unique(toupper(trimws(rows$csv_name)))
+  tracer_names <- unique(toupper(trimws(rows$massdiag_name)))
 
   md <- read.table(file,header=TRUE,stringsAsFactors=FALSE,check.names=FALSE)
   md <- md[abs(as.numeric(md$SIM_HOUR)-24) < 1e-6,,drop=FALSE]
@@ -221,12 +223,14 @@ massdiag_file <- function(expname,date) {
 
 read_massdiag_value <- function(expname,logical_name,variable_table,date) {
   file <- massdiag_file(expname,date)
-  if (!file.exists(file)) return(NA_real_)
-
+  if (!file.exists(file)) {
+    warning("MASSDIA file not found: ",file)
+    return(NA_real_)
+  }
   rows <- variable_table[variable_table$logical_name == logical_name,,drop=FALSE]
   if (nrow(rows) == 0) stop("No resolved tracers for MASSDIA variable ",logical_name)
 
-  tracer_names <- unique(toupper(trimws(rows$csv_name)))
+  tracer_names <- unique(toupper(trimws(rows$massdiag_name)))
 
   md <- read.table(file,header=TRUE,stringsAsFactors=FALSE,check.names=FALSE)
   md <- md[abs(as.numeric(md$SIM_HOUR)-24) < 1e-6,,drop=FALSE]

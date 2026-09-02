@@ -138,10 +138,11 @@ make_result <- function(logical_name,idx,grib_column,table) {
   if (length(idx) == 0) {
     stop("Variable '",logical_name,"' has no available values in column '",grib_column,"'.")
   }
-
+  
   data.frame(
     logical_name = rep(logical_name,length(idx)),
     csv_name     = table$name[idx],
+    massdiag_name = if ("long_name" %in% names(table)) table$long_name[idx] else table$name[idx],
     grib_column  = rep(grib_column,length(idx)),
     grib         = grib_codes,
     stringsAsFactors=FALSE

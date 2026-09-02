@@ -173,6 +173,48 @@ global_mass_tg <- function(field,lon,lat) {
   stop("global_mass_tg expects a 2-D or 3-D field.")
 }
 
+global_flux_tg_day <- function(field,lon,lat) {
+  area <- gridcell_area(lon,lat)
+  if (length(dim(field)) == 2) return(sum(field*area,na.rm=TRUE)*86400/1e9)
+
+  if (length(dim(field)) == 3) {
+    result <- numeric(dim(field)[3])
+    for (t in seq_len(dim(field)[3])) result[t] <- sum(field[,,t]*area,na.rm=TRUE)*86400/1e9
+    return(result)
+  }
+
+  stop("global_flux_tg_day expects a 2-D or 3-D field.")
+}
+
+read_massdiag_column <- function(expname,logical_name,variable_table,date,column) {
+  file <- massdiag_file(expname,date)
+  if (!file.exists(file)) return(NA_real_)
+
+  rows <- variable_table[variable_table$logical_name == logical_name,,drop=FALSE]
+  if (nrow(rows) == 0) stop("No resolved tracers for MASSDIA variable ",logical_name)
+
+  tracer_names <- unique(toupper(trimws(rows$csv_name)))
+
+  md <- read.table(file,header=TRUE,stringsAsFactors=FALSE,check.names=FALSE)
+  md <- md[abs(as.numeric(md$SIM_HOUR)-24) < 1e-6,,drop=FALSE]
+
+  md_names <- toupper(trimws(md$NAME))
+  idx <- match(tracer_names,md_names)
+
+  if (any(is.na(idx))) {
+    missing <- tracer_names[is.na(idx)]
+    stop("MASSDIA tracer(s) not found for ",logical_name,": ",paste(missing,collapse=", "))
+  }
+
+  sum(as.numeric(md[[column]][idx]),na.rm=TRUE)
+}
+
+read_massdiag_flux_series <- function(expname,logical_name,variable_table,dates,column) {
+  values <- sapply(dates,function(date) read_massdiag_column(expname,logical_name,variable_table,date,column))
+  times <- as.POSIXct(as.Date(dates,format="%Y%m%d")+1,tz="UTC")
+  list(time=times,value=values)
+}
+
 massdiag_file <- function(expname,date) {
   paste0(path_data,expname,"/massdiag/massdia_chem__",expname,"_",date,"00.txt")
 }

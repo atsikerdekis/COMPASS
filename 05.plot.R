@@ -348,10 +348,8 @@ for (type in plot_types) {
     abline(h=yseq$breaks,lwd=1,col="grey")
     abline(v=x[IDx_labels],lwd=1,col="grey")
 
-    lines(x,tmean_var1,lwd=8); points(x,tmean_var1,pch=19,cex=2.8)
-    lines(x,tmean_var2,lwd=8); points(x,tmean_var2,pch=19,cex=2.8)
-    lines(x,tmean_var1,lwd=5,col="blue"); points(x,tmean_var1,pch=19,cex=2.2,col="blue")
-    lines(x,tmean_var2,lwd=5,col="red"); points(x,tmean_var2,pch=19,cex=2.2,col="red")
+    lines(x,tmean_var1,lwd=5,col="blue")
+    lines(x,tmean_var2,lwd=5,col="red")
 
     if (!is.null(massdiag1)) {
       massdiag_x1 <- as.numeric(difftime(massdiag1$time,tmean_tim[1],units="hours"))/3 + 1

@@ -24,7 +24,7 @@ grib_table_HAM <- "config/bins_hamm7ver4.0.csv"
 
 ### VARIABLES
 variables <- c(
-  "mss_ss","mss_du","mss_pom","mss_bc","mss_so4","mss_ni","mss_am",
+#  "mss_ss","mss_du","mss_pom","mss_bc","mss_so4","mss_ni","mss_am",
   "dep_ss","dep_du","dep_pom","dep_bc","dep_so4","dep_ni","dep_am"
 )
 

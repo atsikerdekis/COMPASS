@@ -186,70 +186,43 @@ global_flux_tg_day <- function(field,lon,lat) {
   stop("global_flux_tg_day expects a 2-D or 3-D field.")
 }
 
-read_massdiag_column <- function(expname,logical_name,variable_table,date,column) {
-  file <- massdiag_file(expname,date)
-  if (!file.exists(file)) {
-    warning("MASSDIA file not found: ",file)
-    return(NA_real_)
-  }
-  rows <- variable_table[variable_table$logical_name == logical_name,,drop=FALSE]
-  if (nrow(rows) == 0) stop("No resolved tracers for MASSDIA variable ",logical_name)
-
-  tracer_names <- unique(toupper(trimws(rows$massdiag_name)))
-
-  md <- read.table(file,header=TRUE,stringsAsFactors=FALSE,check.names=FALSE)
-  md <- md[abs(as.numeric(md$SIM_HOUR)-24) < 1e-6,,drop=FALSE]
-
-  md_names <- toupper(trimws(md$NAME))
-  idx <- match(tracer_names,md_names)
-
-  if (any(is.na(idx))) {
-    missing <- tracer_names[is.na(idx)]
-    stop("MASSDIA tracer(s) not found for ",logical_name,": ",paste(missing,collapse=", "))
-  }
-
-  sum(as.numeric(md[[column]][idx]),na.rm=TRUE)
-}
-
-read_massdiag_flux_series <- function(expname,logical_name,variable_table,dates,column) {
-  values <- sapply(dates,function(date) read_massdiag_column(expname,logical_name,variable_table,date,column))
-  times <- as.POSIXct(as.Date(dates,format="%Y%m%d")+1,tz="UTC")
-  list(time=times,value=values)
-}
-
 massdiag_file <- function(expname,date) {
   paste0(path_data,expname,"/massdiag/massdia_chem__",expname,"_",date,"00.txt")
 }
 
-read_massdiag_value <- function(expname,logical_name,variable_table,date) {
+read_massdiag_value_at_hour <- function(expname,logical_name,variable_table,date,hour,column="TOT_MASS") {
   file <- massdiag_file(expname,date)
+
   if (!file.exists(file)) {
-    warning("MASSDIA file not found: ",file)
+    message("---> MASSDIA missing: ",file)
     return(NA_real_)
   }
+
   rows <- variable_table[variable_table$logical_name == logical_name,,drop=FALSE]
   if (nrow(rows) == 0) stop("No resolved tracers for MASSDIA variable ",logical_name)
 
   tracer_names <- unique(toupper(trimws(rows$massdiag_name)))
-
   md <- read.table(file,header=TRUE,stringsAsFactors=FALSE,check.names=FALSE)
-  md <- md[abs(as.numeric(md$SIM_HOUR)-24) < 1e-6,,drop=FALSE]
+  md <- md[as.numeric(md$SIM_HOUR) == hour,,drop=FALSE]
+
+  if (nrow(md) == 0) {
+    message("---> MASSDIA missing SIM_HOUR=",hour," in ",file)
+    return(NA_real_)
+  }
 
   md_names <- toupper(trimws(md$NAME))
   idx <- match(tracer_names,md_names)
 
-  if (any(is.na(idx))) {
-    missing <- tracer_names[is.na(idx)]
-    stop("MASSDIA tracer(s) not found for ",logical_name," in ",file,": ",paste(missing,collapse=", "))
-  }
+  if (any(is.na(idx))) stop("MASSDIA tracer(s) not found for ",logical_name," in ",file,": ",paste(tracer_names[is.na(idx)],collapse=", "))
 
-  sum(as.numeric(md$TOT_MASS[idx]),na.rm=TRUE)
+  sum(as.numeric(md[[column]][idx]),na.rm=TRUE)
 }
 
-read_massdiag_series <- function(expname,logical_name,variable_table,dates) {
-  values <- sapply(dates,function(date) read_massdiag_value(expname,logical_name,variable_table,date))
-  times <- as.POSIXct(as.Date(dates,format="%Y%m%d")+1,tz="UTC")
-  list(time=times,value=values)
+read_massdiag_series_hours <- function(expname,logical_name,variable_table,dates,hours=c(6,12,18),column="TOT_MASS") {
+  grid <- expand.grid(date=dates,hour=hours,stringsAsFactors=FALSE)
+  values <- mapply(function(date,hour) read_massdiag_value_at_hour(expname,logical_name,variable_table,date,hour,column),grid$date,grid$hour)
+  times <- as.POSIXct(paste0(substr(grid$date,1,4),"-",substr(grid$date,5,6),"-",substr(grid$date,7,8)," ",sprintf("%02d",grid$hour),":00:00"),tz="UTC")
+  list(time=times,value=as.numeric(values))
 }
 
 

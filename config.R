@@ -9,7 +9,7 @@ exptype2  <- "HAM"
 expclass2 <- "nl"
 ### Period
 sDate   <- "20190101"
-eDate   <- "20190131"
+eDate   <- "20190105"
 ### Runtype
 runtype <- "plot" # plot | download
 ### Other

@@ -234,8 +234,14 @@ for (type in plot_types) {
     ###################
     ### GLOBAL MEAN ###
     ###################
-    tmean_var1 <- apply(data1,3,mean,na.rm=TRUE)
-    tmean_var2 <- apply(data2,3,mean,na.rm=TRUE)
+    if (type %in% c("mss","mss_from_mr")) {
+      tmean_var1 <- global_mass_tg(data1,field_lon,field_lat)
+      tmean_var2 <- global_mass_tg(data2,field_lon,field_lat)
+    } else {
+      tmean_var1 <- apply(data1,3,mean,na.rm=TRUE)
+     tmean_var2 <- apply(data2,3,mean,na.rm=TRUE)
+    }
+
 
     nt <- dim(data1)[3]
 
@@ -244,6 +250,14 @@ for (type in plot_types) {
       by="3 hours",
       length.out=nt
     )
+
+    massdiag1 <- NULL
+    massdiag2 <- NULL
+
+    if (exists("massdiag_compare") && massdiag_compare && type %in% c("mss","mss_from_mr")) {
+      massdiag1 <- read_massdiag_series(expname1,variable1,variables_exp1,seqDate)
+      massdiag2 <- read_massdiag_series(expname2,variable2,variables_exp2,seqDate)
+    }
 
     ###################
     ### DAILY CYCLE ###
@@ -315,9 +329,12 @@ for (type in plot_types) {
     par(mai=c(2,2,0,0.4),family="Century Gothic")
 
     x <- seq_along(tmean_tim)
-    yseq <- positive_axis_ticks(c(tmean_var1,tmean_var2),n=10)
+    ts_values <- c(tmean_var1,tmean_var2)
+    if (!is.null(massdiag1)) ts_values <- c(ts_values,massdiag1$value,massdiag2$value)
+    yseq <- positive_axis_ticks(ts_values,n=10)
     plot(x,type="n",axes=FALSE,ann=FALSE,ylim=c(0,max(yseq$breaks)),yaxs="i")
     mtext("Time",side=1,line=12,cex=3.5)
+    if (type %in% c("mss","mss_from_mr")) mtext("Global mass (Tg)",side=2,line=11,cex=3.5)
 
     IDx_labels <- which(format(tmean_tim,"%H") == "00" & format(tmean_tim,"%d") %in% c("01","05","10","15","20","25"))
     IDx_labels <- unique(c(1,IDx_labels,length(tmean_tim)))
@@ -336,7 +353,20 @@ for (type in plot_types) {
     lines(x,tmean_var1,lwd=5,col="blue"); points(x,tmean_var1,pch=19,cex=2.2,col="blue")
     lines(x,tmean_var2,lwd=5,col="red"); points(x,tmean_var2,pch=19,cex=2.2,col="red")
 
-    legend("top",legend=c(paste0(expname1," (",variable1,")"),paste0(expname2," (",variable2,")")),lwd=7,pch=19,col=c("blue","red"),cex=3)
+    if (!is.null(massdiag1)) {
+      massdiag_x1 <- as.numeric(difftime(massdiag1$time,tmean_tim[1],units="hours"))/3 + 1
+      massdiag_x2 <- as.numeric(difftime(massdiag2$time,tmean_tim[1],units="hours"))/3 + 1
+      valid1 <- massdiag_x1 >= 1 & massdiag_x1 <= length(tmean_tim) & is.finite(massdiag1$value)
+      valid2 <- massdiag_x2 >= 1 & massdiag_x2 <= length(tmean_tim) & is.finite(massdiag2$value)
+      points(massdiag_x1[valid1],massdiag1$value[valid1],pch=4,cex=4,lwd=4,col="blue")
+      points(massdiag_x2[valid2],massdiag2$value[valid2],pch=4,cex=4,lwd=4,col="red")
+    }
+
+    if (is.null(massdiag1)) {
+      legend("top",legend=c(paste0(expname1," (",variable1,")"),paste0(expname2," (",variable2,")")),lwd=7,pch=19,col=c("blue","red"),cex=3)
+    } else {
+      legend("top",legend=c(paste0(expname1," OUTPUT"),paste0(expname1," MASSDIA"),paste0(expname2," OUTPUT"),paste0(expname2," MASSDIA")),lwd=c(7,NA,7,NA),pch=c(19,4,19,4),pt.lwd=c(1,4,1,4),col=c("blue","blue","red","red"),cex=2.7,ncol=2)
+    }
 
     ###################
     ### DAILY CYCLE ###
@@ -525,6 +555,7 @@ if (length(dep_variables) > 0) {
 
     plot(x,type="n",axes=FALSE,ann=FALSE,ylim=c(min(yseq$breaks)-pad,max(yseq$breaks)+pad),yaxs="i")
     mtext("Time",side=1,line=12,cex=3.5)
+    if (type %in% c("mss","mss_from_mr")) mtext("Global mass (Tg)",side=2,line=11,cex=3.5)
 
     IDx_labels <- which(format(tmean_tim,"%H") == "00" & format(tmean_tim,"%d") %in% c("01","05","10","15","20","25"))
     IDx_labels <- unique(c(1,IDx_labels,length(tmean_tim)))

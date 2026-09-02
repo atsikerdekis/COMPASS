@@ -41,6 +41,21 @@ vdate2 <- gsub("-","",seq.Date(sDate_temp,eDate_temp,paste0(step," day")))
 if (runtype == "download") {
 
   message("---> Download mode...")
+  
+  if (exists("massdiag_compare") && massdiag_compare) {
+    for (e in 1:2) {
+      if (e == 1) expname <- expname1 else expname <- expname2
+
+      SubmitJob(
+        JOB_name     = paste0("download_massdiag_",expname),
+        JOB_out      = paste0(path_log,"download_massdiag_",expname,".out"),
+        JOB_err      = paste0(path_log,"download_massdiag_",expname,".out"),
+        PATH_program = paste0(path_R,"Rscript"),
+        PATH_script  = paste0(path_code,"03.download_massdiag.R"),
+        SCRIPT_flag  = paste(expname,sDate,eDate,path_data)
+      )
+    }
+  }
 
   for (d in seq_along(vdate1)) {
 

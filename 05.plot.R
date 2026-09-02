@@ -25,14 +25,14 @@ massdiag_hours <- c(6,12,18)
 plot_types <- c("mmr","ddp","sdm","wdl","wdc","mss","mss_from_mr","ngt")
 
 plot_type_title <- c(
-  mmr="Mass mixing ratio",
-  ddp="Dry deposition",
-  sdm="Sedimentation",
-  wdl="Large-scale wet dep.",
-  wdc="Convective wet dep.",
-  mss="Column mass burden",
-  mss_from_mr="Column burden from mixing ratio",
-  ngt="Negative fixer"
+  mmr = "Mass mixing ratio",
+  ddp = "Dry deposition",
+  sdm = "Sedimentation",
+  wdl = "Large-scale wet dep.",
+  wdc = "Convective wet dep.",
+  mss = "Column mass burden",
+  mss_from_mr = "Column burden from mixing ratio",
+  ngt = "Negative fixer"
 )
 
 dep_fluxes <- c("ddp","sdm","wdl","wdc","ngt")
@@ -145,6 +145,7 @@ read_plot_data <- function(expname,exptype,logical_name,variable_table,type) {
 
 get_display_type <- function(logical_name) toupper(get_variable_suffix(logical_name))
 get_massdiag_pch <- function(exptype) if (exptype == "HAM") 4 else 1
+get_midnight_idx <- function(tt) which(format(tt,"%H") == "00")
 
 ############################
 ### LOOP DIAGNOSTIC TYPES ###
@@ -244,21 +245,20 @@ for (type in plot_types) {
     axis(1,at=x[IDx_labels],labels=FALSE,tck=0.01); axis(1,at=x[IDx_labels],labels=FALSE,tck=-0.01)
     axis(2,at=yseq$breaks,labels=yseq$labels,las=1,cex.axis=3)
     box(lwd=2); abline(h=yseq$breaks,lwd=1,col="grey"); abline(v=x[IDx_labels],lwd=1,col="grey")
-    lines(x,tmean_var1,lwd=5,col="blue"); points(x,tmean_var1,pch=19,cex=1.6,col="blue")
-    lines(x,tmean_var2,lwd=5,col="red"); points(x,tmean_var2,pch=19,cex=1.6,col="red")
+    lines(x,tmean_var1,lwd=5,col="blue"); lines(x,tmean_var2,lwd=5,col="red")
 
     if (!is.null(massdiag1)) {
-      pch1 <- get_massdiag_pch(exptype1); pch2 <- get_massdiag_pch(exptype2)
       massdiag_x1 <- as.numeric(difftime(massdiag1$time,tmean_tim[1],units="hours"))/3 + 1
       massdiag_x2 <- as.numeric(difftime(massdiag2$time,tmean_tim[1],units="hours"))/3 + 1
       valid1 <- massdiag_x1 >= 1 & massdiag_x1 <= length(tmean_tim) & is.finite(massdiag1$value)
       valid2 <- massdiag_x2 >= 1 & massdiag_x2 <= length(tmean_tim) & is.finite(massdiag2$value)
-      points(massdiag_x1[valid1],massdiag1$value[valid1],pch=pch1,cex=2.6,lwd=2.5,col="blue")
-      points(massdiag_x2[valid2],massdiag2$value[valid2],pch=pch2,cex=2.6,lwd=2.5,col="red")
+      pch1 <- get_massdiag_pch(exptype1); pch2 <- get_massdiag_pch(exptype2)
+      points(massdiag_x1[valid1],massdiag1$value[valid1],pch=pch1,cex=2.8,lwd=2.5,col="blue")
+      points(massdiag_x2[valid2],massdiag2$value[valid2],pch=pch2,cex=2.8,lwd=2.5,col="red")
     }
 
     if (is.null(massdiag1)) {
-      legend("top",legend=c(expname1,expname2),lwd=5,pch=19,col=c("blue","red"),cex=3)
+      legend("top",legend=c(expname1,expname2),lwd=5,col=c("blue","red"),cex=3)
     } else {
       legend("top",legend=c(paste0(expname1," OUTPUT"),paste0(expname1," MASSDIA"),paste0(expname2," OUTPUT"),paste0(expname2," MASSDIA")),lwd=c(5,NA,5,NA),pch=c(19,get_massdiag_pch(exptype1),19,get_massdiag_pch(exptype2)),pt.lwd=c(1,2.5,1,2.5),col=c("blue","blue","red","red"),cex=2.5,ncol=2)
     }
@@ -271,9 +271,8 @@ for (type in plot_types) {
     axis(1,at=1:8,labels=FALSE,tck=0.01); axis(1,at=1:8,labels=FALSE,tck=-0.01)
     axis(2,at=yseq$breaks,labels=yseq$labels,las=1,cex.axis=3)
     box(lwd=2); abline(h=yseq$breaks,lwd=1,col="grey"); abline(v=1:8,lwd=1,col="grey")
-    lines(1:8,dhourmean_var1,lwd=5,col="blue"); points(1:8,dhourmean_var1,pch=19,cex=1.6,col="blue")
-    lines(1:8,dhourmean_var2,lwd=5,col="red"); points(1:8,dhourmean_var2,pch=19,cex=1.6,col="red")
-    legend("top",legend=c(expname1,expname2),lwd=5,pch=19,col=c("blue","red"),cex=3)
+    lines(1:8,dhourmean_var1,lwd=5,col="blue"); lines(1:8,dhourmean_var2,lwd=5,col="red")
+    legend("top",legend=c(expname1,expname2),lwd=5,col=c("blue","red"),cex=3)
 
     dev.off()
     file_tmp <- paste0(file_out,".tmp.png")
@@ -320,7 +319,8 @@ if (length(dep_variables) > 0) {
       hour <- as.integer(format(tmean_tim,"%H"))
       hours <- c(0,3,6,9,12,15,18,21)
 
-      massdiag1 <- NULL; massdiag2 <- NULL
+      massdiag1 <- NULL
+      massdiag2 <- NULL
       massdiag_column <- c(ddp="DDEP_FLX",sdm="SEDM_FLX",ngt="NEGA_FIX")[flux]
 
       if (!is.na(massdiag_column) && exists("massdiag_compare") && massdiag_compare) {
@@ -346,7 +346,9 @@ if (length(dep_variables) > 0) {
       )
     }
 
-    wet_massdiag1 <- NULL; wet_massdiag2 <- NULL
+    wet_massdiag1 <- NULL
+    wet_massdiag2 <- NULL
+
     if (all(c("wdl","wdc") %in% available_fluxes) && exists("massdiag_compare") && massdiag_compare) {
       wet_logical_name <- paste0("wdl_",dep_suffix)
       wet_massdiag1 <- read_massdiag_series_hours(expname1,wet_logical_name,variables_exp1,seqDate,hours=massdiag_hours,column="WDEP_FLX")
@@ -388,6 +390,7 @@ if (length(dep_variables) > 0) {
     for (flux in available_fluxes) {
       z <- dep_data[[flux]]
       par(mai=c(0,0,0,0)); plot.new(); text(0.5,0.5,plot_type_title[[flux]],col="grey20",cex=5,family="Century Gothic",srt=90)
+
       MapNC(filename_topo="",figure_box=figure_box,field_show_box=field_show_box,coastlineWorldFine_lwd=coastlineWorldFine_lwd,gridlines=gridlines,projection=projection,lonmax=lonmax,lonmin=lonmin,latmax=latmax,latmin=latmin,field_value=z$field_var1,field_lon=z$field_lon,field_lat=z$field_lat,field_pallete_name="TROPOMI_NEW",field_breaks=z$field_breaks,field_units=z$units,field_pallete_starting_alpha=100,field_show_legend=FALSE)
       MapNC(filename_topo="",figure_box=figure_box,field_show_box=field_show_box,coastlineWorldFine_lwd=coastlineWorldFine_lwd,gridlines=gridlines,projection=projection,lonmax=lonmax,lonmin=lonmin,latmax=latmax,latmin=latmin,field_value=z$field_var2,field_lon=z$field_lon,field_lat=z$field_lat,field_pallete_name="TROPOMI_NEW",field_breaks=z$field_breaks,field_units=z$units,field_pallete_starting_alpha=100,field_show_legend=TRUE,field_legend_mai_right=1.8,field_legend_nlabels=7)
       MapNC(filename_topo="",figure_box=figure_box,field_show_box=field_show_box,coastlineWorldFine_lwd=coastlineWorldFine_lwd,gridlines=gridlines,projection=projection,lonmax=lonmax,lonmin=lonmin,latmax=latmax,latmin=latmin,field_value=z$field_var2-z$field_var1,field_lon=z$field_lon,field_lat=z$field_lat,field_pallete_name="MNMB",field_breaks=z$field_breaks_diff,field_units=z$units,field_pallete_starting_alpha=100,field_show_legend=TRUE,field_legend_mai_right=1.8,field_legend_nlabels=7)
@@ -396,9 +399,11 @@ if (length(dep_variables) > 0) {
     tmean_tim <- dep_data[[available_fluxes[1]]]$tmean_tim
     x <- seq_along(tmean_tim)
     all_ts <- unlist(lapply(available_fluxes,function(flux) c(dep_data[[flux]]$tmean_var1,dep_data[[flux]]$tmean_var2)))
-    for (flux in available_fluxes) if (!is.null(dep_data[[flux]]$massdiag1)) all_ts <- c(all_ts,dep_data[[flux]]$massdiag1$value,dep_data[[flux]]$massdiag2$value)
 
-    wet_output1 <- NULL; wet_output2 <- NULL
+    for (flux in available_fluxes) {
+      if (!is.null(dep_data[[flux]]$massdiag1)) all_ts <- c(all_ts,dep_data[[flux]]$massdiag1$value,dep_data[[flux]]$massdiag2$value)
+    }
+
     if (!is.null(wet_massdiag1)) {
       wet_output1 <- dep_data[["wdl"]]$tmean_var1 + dep_data[["wdc"]]$tmean_var1
       wet_output2 <- dep_data[["wdl"]]$tmean_var2 + dep_data[["wdc"]]$tmean_var2
@@ -414,6 +419,7 @@ if (length(dep_variables) > 0) {
     plot(x,type="n",axes=FALSE,ann=FALSE,ylim=c(min(yseq$breaks)-pad,max(yseq$breaks)+pad),yaxs="i")
     mtext("Time",side=1,line=12,cex=3.5)
     mtext("Global flux (Tg/day)",side=2,line=11,cex=3.5)
+
     IDx_labels <- which(format(tmean_tim,"%H") == "00" & format(tmean_tim,"%d") %in% c("01","05","10","15","20","25"))
     IDx_labels <- unique(c(1,IDx_labels,length(tmean_tim)))
     axis(1,at=x[IDx_labels],labels=format(tmean_tim[IDx_labels],"%Y-%m-%d"),cex.axis=4,line=4,lty=0)
@@ -424,61 +430,63 @@ if (length(dep_variables) > 0) {
     abline(h=yseq$breaks,lwd=1,col="grey")
     abline(v=x[IDx_labels],lwd=1,col="grey")
 
+    midnight_idx <- get_midnight_idx(tmean_tim)
     for (flux in available_fluxes) {
       lines(x,dep_data[[flux]]$tmean_var1,lwd=5,col=dep_flux_colors[flux],lty=1)
-      points(x,dep_data[[flux]]$tmean_var1,pch=19,cex=1.2,col=dep_flux_colors[flux])
+      points(x,dep_data[[flux]]$tmean_var1,pch=19,cex=1.5,col=dep_flux_colors[flux])
       lines(x,dep_data[[flux]]$tmean_var2,lwd=5,col=dep_flux_colors[flux],lty=2)
-      points(x,dep_data[[flux]]$tmean_var2,pch=19,cex=1.2,col=dep_flux_colors[flux])
-    }
-
-    if (!is.null(wet_massdiag1)) {
-      lines(x,wet_output1,lwd=5,col=dep_flux_colors["wdep"],lty=1)
-      points(x,wet_output1,pch=19,cex=1.2,col=dep_flux_colors["wdep"])
-      lines(x,wet_output2,lwd=5,col=dep_flux_colors["wdep"],lty=2)
-      points(x,wet_output2,pch=19,cex=1.2,col=dep_flux_colors["wdep"])
+      points(x,dep_data[[flux]]$tmean_var2,pch=19,cex=1.5,col=dep_flux_colors[flux])
+      points(midnight_idx,dep_data[[flux]]$tmean_var1[midnight_idx],pch=19,cex=2.4,col=dep_flux_colors[flux])
+      points(midnight_idx,dep_data[[flux]]$tmean_var2[midnight_idx],pch=19,cex=2.4,col=dep_flux_colors[flux])
     }
 
     pch1 <- get_massdiag_pch(exptype1); pch2 <- get_massdiag_pch(exptype2)
 
     for (flux in available_fluxes) {
       z <- dep_data[[flux]]
+
       if (!is.null(z$massdiag1)) {
         mx1 <- as.numeric(difftime(z$massdiag1$time,tmean_tim[1],units="hours"))/3 + 1
         mx2 <- as.numeric(difftime(z$massdiag2$time,tmean_tim[1],units="hours"))/3 + 1
         valid1 <- mx1 >= 1 & mx1 <= length(tmean_tim) & is.finite(z$massdiag1$value)
         valid2 <- mx2 >= 1 & mx2 <= length(tmean_tim) & is.finite(z$massdiag2$value)
-        points(mx1[valid1],z$massdiag1$value[valid1],pch=pch1,cex=2.2,lwd=2.2,col=dep_flux_colors[flux])
-        points(mx2[valid2],z$massdiag2$value[valid2],pch=pch2,cex=2.2,lwd=2.2,col=dep_flux_colors[flux])
+
+        points(mx1[valid1],z$massdiag1$value[valid1],pch=pch1,cex=2.6,lwd=2.5,col=dep_flux_colors[flux])
+        points(mx2[valid2],z$massdiag2$value[valid2],pch=pch2,cex=2.6,lwd=2.5,col=dep_flux_colors[flux])
       }
     }
 
     if (!is.null(wet_massdiag1)) {
+      lines(x,wet_output1,lwd=5,col=dep_flux_colors["wdep"],lty=1)
+      points(x,wet_output1,pch=19,cex=1.5,col=dep_flux_colors["wdep"])
+      lines(x,wet_output2,lwd=5,col=dep_flux_colors["wdep"],lty=2)
+      points(x,wet_output2,pch=19,cex=1.5,col=dep_flux_colors["wdep"])
+      points(midnight_idx,wet_output1[midnight_idx],pch=19,cex=2.4,col=dep_flux_colors["wdep"])
+      points(midnight_idx,wet_output2[midnight_idx],pch=19,cex=2.4,col=dep_flux_colors["wdep"])
+
       mx1 <- as.numeric(difftime(wet_massdiag1$time,tmean_tim[1],units="hours"))/3 + 1
       mx2 <- as.numeric(difftime(wet_massdiag2$time,tmean_tim[1],units="hours"))/3 + 1
       valid1 <- mx1 >= 1 & mx1 <= length(tmean_tim) & is.finite(wet_massdiag1$value)
       valid2 <- mx2 >= 1 & mx2 <= length(tmean_tim) & is.finite(wet_massdiag2$value)
-      points(mx1[valid1],wet_massdiag1$value[valid1],pch=pch1,cex=2.2,lwd=2.2,col=dep_flux_colors["wdep"])
-      points(mx2[valid2],wet_massdiag2$value[valid2],pch=pch2,cex=2.2,lwd=2.2,col=dep_flux_colors["wdep"])
+
+      points(mx1[valid1],wet_massdiag1$value[valid1],pch=pch1,cex=2.6,lwd=2.5,col=dep_flux_colors["wdep"])
+      points(mx2[valid2],wet_massdiag2$value[valid2],pch=pch2,cex=2.6,lwd=2.5,col=dep_flux_colors["wdep"])
     }
 
     legend_fluxes <- toupper(available_fluxes)
     legend_colors <- dep_flux_colors[available_fluxes]
+
     if (!is.null(wet_massdiag1)) {
       legend_fluxes <- c(legend_fluxes,"WDEP")
       legend_colors <- c(legend_colors,dep_flux_colors["wdep"])
     }
 
-    legend("topleft",legend=legend_fluxes,lwd=6,pch=19,col=legend_colors,lty=1,cex=2.1,bty="n")
-    legend("topright",legend=c(paste0(expname1," OUTPUT"),paste0(expname2," OUTPUT"),paste0(expname1," MASSDIA"),paste0(expname2," MASSDIA")),lwd=c(6,6,NA,NA),pch=c(19,19,pch1,pch2),col=c("grey20","grey20","grey20","grey20"),lty=c(1,2,NA,NA),pt.lwd=c(1,1,2.2,2.2),cex=2.0,bty="n")
+    legend("topleft",legend=legend_fluxes,lwd=6,col=legend_colors,lty=1,cex=2.3,bty="n")
+    legend("topright",legend=c(paste0(expname1," OUTPUT"),paste0(expname2," OUTPUT"),paste0(expname1," MASSDIA"),paste0(expname2," MASSDIA")),lwd=c(6,6,NA,NA),pch=c(19,19,get_massdiag_pch(exptype1),get_massdiag_pch(exptype2)),col=c("grey20","grey20","grey20","grey20"),lty=c(1,2,NA,NA),pt.lwd=c(1,1,2.5,2.5),cex=2.0,bty="n")
 
     all_dc <- unlist(lapply(available_fluxes,function(flux) c(dep_data[[flux]]$dhourmean_var1,dep_data[[flux]]$dhourmean_var2)))
-    if (!is.null(wet_output1)) {
-      wet_dc1 <- sapply(c(0,3,6,9,12,15,18,21),function(h) mean(wet_output1[hour == h],na.rm=TRUE))
-      wet_dc2 <- sapply(c(0,3,6,9,12,15,18,21),function(h) mean(wet_output2[hour == h],na.rm=TRUE))
-      all_dc <- c(all_dc,wet_dc1,wet_dc2)
-    }
-
     par(mai=c(2,2,0,0.4),family="Century Gothic")
+
     yseq <- axis_ticks(all_dc,n=10)
     pad <- diff(range(yseq$breaks))*0.05
     if (!is.finite(pad) || pad == 0) pad <- max(abs(yseq$breaks),na.rm=TRUE)*0.05
@@ -487,35 +495,31 @@ if (length(dep_variables) > 0) {
     plot(1:8,type="n",axes=FALSE,ann=FALSE,ylim=c(min(yseq$breaks)-pad,max(yseq$breaks)+pad),yaxs="i")
     mtext("Time (3 hourly UTC)",side=1,line=12,cex=3.5)
     mtext("Global flux (Tg/day)",side=2,line=11,cex=3.5)
+
     axis(1,at=1:8,labels=c("00","03","06","09","12","15","18","21"),cex.axis=4,line=4,lty=0)
     axis(1,at=1:8,labels=FALSE,tck=0.01)
     axis(1,at=1:8,labels=FALSE,tck=-0.01)
     axis(2,at=yseq$breaks,labels=yseq$labels,las=1,cex.axis=3)
+
     box(lwd=2)
     abline(h=yseq$breaks,lwd=1,col="grey")
     abline(v=1:8,lwd=1,col="grey")
 
     for (flux in available_fluxes) {
       lines(1:8,dep_data[[flux]]$dhourmean_var1,lwd=5,col=dep_flux_colors[flux],lty=1)
-      points(1:8,dep_data[[flux]]$dhourmean_var1,pch=19,cex=1.2,col=dep_flux_colors[flux])
+      points(1:8,dep_data[[flux]]$dhourmean_var1,pch=19,cex=1.5,col=dep_flux_colors[flux])
       lines(1:8,dep_data[[flux]]$dhourmean_var2,lwd=5,col=dep_flux_colors[flux],lty=2)
-      points(1:8,dep_data[[flux]]$dhourmean_var2,pch=19,cex=1.2,col=dep_flux_colors[flux])
+      points(1:8,dep_data[[flux]]$dhourmean_var2,pch=19,cex=1.5,col=dep_flux_colors[flux])
     }
 
-    if (!is.null(wet_output1)) {
-      lines(1:8,wet_dc1,lwd=5,col=dep_flux_colors["wdep"],lty=1)
-      points(1:8,wet_dc1,pch=19,cex=1.2,col=dep_flux_colors["wdep"])
-      lines(1:8,wet_dc2,lwd=5,col=dep_flux_colors["wdep"],lty=2)
-      points(1:8,wet_dc2,pch=19,cex=1.2,col=dep_flux_colors["wdep"])
-    }
-
-    legend("topleft",legend=legend_fluxes,lwd=6,pch=19,col=legend_colors,lty=1,cex=2.1,bty="n")
-    legend("topright",legend=c(expname1,expname2),lwd=6,pch=19,col="grey20",lty=c(1,2),cex=2.1,bty="n")
+    legend("topleft",legend=toupper(available_fluxes),lwd=6,col=dep_flux_colors[available_fluxes],lty=1,cex=2.3,bty="n")
+    legend("topright",legend=c(expname1,expname2),lwd=6,col="grey20",lty=c(1,2),cex=2.3,bty="n")
 
     dev.off()
     file_tmp <- paste0(file_out,".tmp.png")
     compress(file_in=file_out,file_out=file_tmp)
     file.rename(file_tmp,file_out)
+
     message("---> Composite figure: ",file_out)
   }
 }

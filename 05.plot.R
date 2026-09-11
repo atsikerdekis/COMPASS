@@ -326,6 +326,8 @@ if (length(dep_variables) > 0) {
       if (!is.na(massdiag_column) && exists("massdiag_compare") && massdiag_compare) {
         massdiag1 <- read_massdiag_series_hours(expname1,logical_name,variables_exp1,seqDate,hours=massdiag_hours,column=massdiag_column)
         massdiag2 <- read_massdiag_series_hours(expname2,logical_name,variables_exp2,seqDate,hours=massdiag_hours,column=massdiag_column)
+        massdiag1$value <- -massdiag1$value
+        massdiag2$value <- -massdiag2$value
       }
 
       dep_data[[flux]] <- list(
@@ -353,6 +355,8 @@ if (length(dep_variables) > 0) {
       wet_logical_name <- paste0("wdl_",dep_suffix)
       wet_massdiag1 <- read_massdiag_series_hours(expname1,wet_logical_name,variables_exp1,seqDate,hours=massdiag_hours,column="WDEP_FLX")
       wet_massdiag2 <- read_massdiag_series_hours(expname2,wet_logical_name,variables_exp2,seqDate,hours=massdiag_hours,column="WDEP_FLX")
+      wet_massdiag1$value <- -wet_massdiag1$value
+      wet_massdiag2$value <- -wet_massdiag2$value
     }
 
     plot_category <- get_plot_category(dep_name)

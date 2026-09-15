@@ -8,13 +8,33 @@ plot_level <- 1000
 
 figure_box <- FALSE
 field_show_box <- FALSE
-lonmin <- 0
-lonmax <- 360
-latmin <- -90
-latmax <- 90
-projection <- "+proj=robin"
 gridlines <- 10
 coastlineWorldFine_lwd <- 1
+
+### Region settings
+if (!exists("region")) region <- "global"
+if (!exists("regions")) regions <- list(global=c(-180,180,-90,90))
+if (!region %in% names(regions)) stop("Unknown region '",region,"'. Available regions: ",paste(names(regions),collapse=", "))
+
+region_box <- regions[[region]]
+regional_mode <- tolower(region) != "global"
+
+if (regional_mode) {
+  lonmin <- region_box[1]
+  lonmax <- region_box[2]
+  latmin <- region_box[3]
+  latmax <- region_box[4]
+  loncenter <- mean(c(lonmin,lonmax))
+  latcenter <- mean(c(latmin,latmax))
+  projection <- paste0("+proj=ortho +lon_0=",loncenter," +lat_0=",latcenter)
+  gridlines <- 5
+} else {
+  lonmin <- 0
+  lonmax <- 360
+  latmin <- -90
+  latmax <- 90
+  projection <- "+proj=robin"
+}
 
 seqDate <- format(seq.Date(from=as.Date(sDate,format="%Y%m%d"),to=as.Date(eDate,format="%Y%m%d"),by="day"),"%Y%m%d")
 massdiag_hours <- c(6,12,18)
@@ -146,6 +166,8 @@ read_plot_data <- function(expname,exptype,logical_name,variable_table,type) {
 get_display_type <- function(logical_name) toupper(get_variable_suffix(logical_name))
 get_massdiag_pch <- function(exptype) if (exptype == "HAM") 4 else 1
 get_midnight_idx <- function(tt) which(format(tt,"%H") == "00")
+region_title <- if (regional_mode) paste0("   |   Region: ",region) else ""
+region_file_tag <- if (regional_mode) paste0("_",gsub("[^A-Za-z0-9_-]","_",region)) else ""
 
 ############################
 ### LOOP DIAGNOSTIC TYPES ###
@@ -159,7 +181,7 @@ for (type in plot_types) {
   for (v in seq_along(vars1)) {
     variable1 <- vars1[v]
     variable2 <- vars2[v]
-    message("---> Plotting ",variable1," vs ",variable2)
+    message("---> Plotting ",variable1," vs ",variable2,if (regional_mode) paste0(" for ",region) else "")
 
     field_day1 <- list()
     field_day2 <- list()
@@ -178,45 +200,67 @@ for (type in plot_types) {
 
     file1 <- variable_file(variable1,variables_exp1,expname1,seqDate[1])
     ll <- read_lon_lat(file1)
-    field_lon <- ll$lon; field_lat <- ll$lat
+    field_lon <- ll$lon
+    field_lat <- ll$lat
     units <- get_plot_units(type)
 
     field_var1 <- apply(data1,c(1,2),mean,na.rm=TRUE)
     field_var2 <- apply(data2,c(1,2),mean,na.rm=TRUE)
 
-    if (type %in% c("mss","mss_from_mr")) {
-      tmean_var1 <- global_mass_tg(data1,field_lon,field_lat)
-      tmean_var2 <- global_mass_tg(data2,field_lon,field_lat)
+    if (regional_mode) {
+      field_plot1 <- mask_region_field(field_var1,field_lon,field_lat,region_box)
+      field_plot2 <- mask_region_field(field_var2,field_lon,field_lat,region_box)
     } else {
-      tmean_var1 <- apply(data1,3,mean,na.rm=TRUE)
-      tmean_var2 <- apply(data2,3,mean,na.rm=TRUE)
+      field_plot1 <- field_var1
+      field_plot2 <- field_var2
+    }
+
+    if (type %in% c("mss","mss_from_mr")) {
+      if (regional_mode) {
+        tmean_var1 <- regional_mass_tg(data1,field_lon,field_lat,region_box)
+        tmean_var2 <- regional_mass_tg(data2,field_lon,field_lat,region_box)
+      } else {
+        tmean_var1 <- global_mass_tg(data1,field_lon,field_lat)
+        tmean_var2 <- global_mass_tg(data2,field_lon,field_lat)
+      }
+    } else {
+      if (regional_mode) {
+        tmean_var1 <- regional_mean(data1,field_lon,field_lat,region_box)
+        tmean_var2 <- regional_mean(data2,field_lon,field_lat,region_box)
+      } else {
+        tmean_var1 <- apply(data1,3,mean,na.rm=TRUE)
+        tmean_var2 <- apply(data2,3,mean,na.rm=TRUE)
+      }
     }
 
     nt <- dim(data1)[3]
     tmean_tim <- seq.POSIXt(from=as.POSIXct(paste0(substr(sDate,1,4),"-",substr(sDate,5,6),"-",substr(sDate,7,8)," 00:00:00"),tz="UTC"),by="3 hours",length.out=nt)
 
-    massdiag1 <- NULL; massdiag2 <- NULL
-    if (exists("massdiag_compare") && massdiag_compare && type %in% c("mss","mss_from_mr")) {
+    ### MASSDIA is a global diagnostic and is intentionally disabled for regional plots
+    massdiag1 <- NULL
+    massdiag2 <- NULL
+    if (!regional_mode && exists("massdiag_compare") && massdiag_compare && type %in% c("mss","mss_from_mr")) {
       massdiag1 <- read_massdiag_series_hours(expname1,variable1,variables_exp1,seqDate,hours=massdiag_hours,column="TOT_MASS")
       massdiag2 <- read_massdiag_series_hours(expname2,variable2,variables_exp2,seqDate,hours=massdiag_hours,column="TOT_MASS")
     }
 
-    hour <- as.integer(format(tmean_tim,"%H")); hours <- c(0,3,6,9,12,15,18,21)
+    hour <- as.integer(format(tmean_tim,"%H"))
+    hours <- c(0,3,6,9,12,15,18,21)
     dhourmean_var1 <- sapply(hours,function(h) mean(tmean_var1[hour == h],na.rm=TRUE))
     dhourmean_var2 <- sapply(hours,function(h) mean(tmean_var2[hour == h],na.rm=TRUE))
-    field_breaks <- positive_breaks(c(field_var1,field_var2),ncolors=200)
-    field_breaks_diff <- difference_breaks(field_var2-field_var1,ncolors=200)
+    field_breaks <- positive_breaks(c(field_plot1,field_plot2),ncolors=200)
+    field_breaks_diff <- difference_breaks(field_plot2-field_plot1,ncolors=200)
 
     plot_category <- get_plot_category(variable1)
     plot_dir <- paste0(path_plot,plot_category,"/")
     dir.create(plot_dir,recursive=TRUE,showWarnings=FALSE)
-    file_out <- paste0(plot_dir,gsub(" ","",plot_title),"_",variable1,"_vs_",variable2,"_",expname1,"-",expname2,"_",sDate,"-",eDate,".png")
+    file_out <- paste0(plot_dir,gsub(" ","",plot_title),"_",variable1,"_vs_",variable2,"_",expname1,"-",expname2,region_file_tag,"_",sDate,"-",eDate,".png")
 
     dpi <- 300
     png(file_out,width=(0.2+3*3.9+0.8+0.8)*dpi,height=(0.23+0.15+2+2.5)*dpi)
     layout(mat=matrix(c(1,1,1,1,1,1,2:13,14,14,14,14,15,15),4,6,byrow=TRUE),widths=c(0.2,3.9,3.9,0.8,3.9,0.8),heights=c(0.23,0.15,2,2.5))
 
-    par(mai=c(0,0,0,0)); plot.new(); text(0.5,0.5,paste0("Experiments: ",expname1," VS ",expname2,"   |   Type: ",get_display_type(variable1),"   |   Period: ",sDate,"-",eDate),col="grey50",cex=6,family="Century Gothic"); abline(h=c(0,1),col="grey50",lwd=3)
+    par(mai=c(0,0,0,0)); plot.new(); text(0.5,0.5,paste0("Experiments: ",expname1," VS ",expname2,"   |   Type: ",get_display_type(variable1),region_title,"   |   Period: ",sDate,"-",eDate),col="grey50",cex=6,family="Century Gothic"); abline(h=c(0,1),col="grey50",lwd=3)
     par(mai=c(0,0,0,0)); plot.new()
     par(mai=c(0,0,0,0)); plot.new(); text(0.5,0.5,paste0(expname1," (",exptype1,")"),col="grey20",cex=4.5,family="Century Gothic")
     par(mai=c(0,0,0,0)); plot.new(); text(0.5,0.5,paste0(expname2," (",exptype2,")"),col="grey20",cex=4.5,family="Century Gothic")
@@ -227,9 +271,9 @@ for (type in plot_types) {
     if (type == "mmr") title_text <- paste0(title_text," @ ",plot_level," hPa")
     par(mai=c(0,0,0,0)); plot.new(); text(0.5,0.5,title_text,col="grey20",cex=5,family="Century Gothic",srt=90)
 
-    MapNC(filename_topo="",figure_box=figure_box,field_show_box=field_show_box,coastlineWorldFine_lwd=coastlineWorldFine_lwd,gridlines=gridlines,projection=projection,lonmax=lonmax,lonmin=lonmin,latmax=latmax,latmin=latmin,field_value=field_var1,field_lon=field_lon,field_lat=field_lat,field_pallete_name="TROPOMI_NEW",field_breaks=field_breaks,field_units=units,field_pallete_starting_alpha=100,field_show_legend=FALSE)
-    MapNC(filename_topo="",figure_box=figure_box,field_show_box=field_show_box,coastlineWorldFine_lwd=coastlineWorldFine_lwd,gridlines=gridlines,projection=projection,lonmax=lonmax,lonmin=lonmin,latmax=latmax,latmin=latmin,field_value=field_var2,field_lon=field_lon,field_lat=field_lat,field_pallete_name="TROPOMI_NEW",field_breaks=field_breaks,field_units=units,field_pallete_starting_alpha=100,field_show_legend=TRUE,field_legend_mai_right=1.8,field_legend_nlabels=7)
-    MapNC(filename_topo="",figure_box=figure_box,field_show_box=field_show_box,coastlineWorldFine_lwd=coastlineWorldFine_lwd,gridlines=gridlines,projection=projection,lonmax=lonmax,lonmin=lonmin,latmax=latmax,latmin=latmin,field_value=field_var2-field_var1,field_lon=field_lon,field_lat=field_lat,field_pallete_name="MNMB",field_breaks=field_breaks_diff,field_units=units,field_pallete_starting_alpha=100,field_show_legend=TRUE,field_legend_mai_right=1.8,field_legend_nlabels=7)
+    MapNC(filename_topo="",figure_box=figure_box,field_show_box=field_show_box,coastlineWorldFine_lwd=coastlineWorldFine_lwd,gridlines=gridlines,projection=projection,lonmax=lonmax,lonmin=lonmin,latmax=latmax,latmin=latmin,drawMapBox=regional_mode,field_value=field_plot1,field_lon=field_lon,field_lat=field_lat,field_pallete_name="TROPOMI_NEW",field_breaks=field_breaks,field_units=units,field_pallete_starting_alpha=100,field_show_legend=FALSE)
+    MapNC(filename_topo="",figure_box=figure_box,field_show_box=field_show_box,coastlineWorldFine_lwd=coastlineWorldFine_lwd,gridlines=gridlines,projection=projection,lonmax=lonmax,lonmin=lonmin,latmax=latmax,latmin=latmin,drawMapBox=regional_mode,field_value=field_plot2,field_lon=field_lon,field_lat=field_lat,field_pallete_name="TROPOMI_NEW",field_breaks=field_breaks,field_units=units,field_pallete_starting_alpha=100,field_show_legend=TRUE,field_legend_mai_right=1.8,field_legend_nlabels=7)
+    MapNC(filename_topo="",figure_box=figure_box,field_show_box=field_show_box,coastlineWorldFine_lwd=coastlineWorldFine_lwd,gridlines=gridlines,projection=projection,lonmax=lonmax,lonmin=lonmin,latmax=latmax,latmin=latmin,drawMapBox=regional_mode,field_value=field_plot2-field_plot1,field_lon=field_lon,field_lat=field_lat,field_pallete_name="MNMB",field_breaks=field_breaks_diff,field_units=units,field_pallete_starting_alpha=100,field_show_legend=TRUE,field_legend_mai_right=1.8,field_legend_nlabels=7)
 
     par(mai=c(2,2,0,0.4),family="Century Gothic")
     x <- seq_along(tmean_tim)
@@ -238,14 +282,17 @@ for (type in plot_types) {
     yseq <- positive_axis_ticks(ts_values,n=10)
     plot(x,type="n",axes=FALSE,ann=FALSE,ylim=c(0,max(yseq$breaks)),yaxs="i")
     mtext("Time",side=1,line=12,cex=3.5)
-    if (type %in% c("mss","mss_from_mr")) mtext("Global mass (Tg)",side=2,line=11,cex=3.5)
+    if (type %in% c("mss","mss_from_mr")) mtext(if (regional_mode) paste0(region," mass (Tg)") else "Global mass (Tg)",side=2,line=11,cex=3.5)
     IDx_labels <- which(format(tmean_tim,"%H") == "00" & format(tmean_tim,"%d") %in% c("01","05","10","15","20","25"))
     IDx_labels <- unique(c(1,IDx_labels,length(tmean_tim)))
     axis(1,at=x[IDx_labels],labels=format(tmean_tim[IDx_labels],"%Y-%m-%d"),cex.axis=4,line=4,lty=0)
     axis(1,at=x[IDx_labels],labels=FALSE,tck=0.01); axis(1,at=x[IDx_labels],labels=FALSE,tck=-0.01)
     axis(2,at=yseq$breaks,labels=yseq$labels,las=1,cex.axis=3)
     box(lwd=2); abline(h=yseq$breaks,lwd=1,col="grey"); abline(v=x[IDx_labels],lwd=1,col="grey")
-    lines(x,tmean_var1,lwd=5,col="blue"); lines(x,tmean_var2,lwd=5,col="red")
+    lines(x,tmean_var1,lwd=5,col="blue")
+    points(x,tmean_var1,pch=19,cex=1.5,col="blue")
+    lines(x,tmean_var2,lwd=5,col="red")
+    points(x,tmean_var2,pch=19,cex=1.5,col="red")
 
     if (!is.null(massdiag1)) {
       massdiag_x1 <- as.numeric(difftime(massdiag1$time,tmean_tim[1],units="hours"))/3 + 1
@@ -271,9 +318,11 @@ for (type in plot_types) {
     axis(1,at=1:8,labels=FALSE,tck=0.01); axis(1,at=1:8,labels=FALSE,tck=-0.01)
     axis(2,at=yseq$breaks,labels=yseq$labels,las=1,cex.axis=3)
     box(lwd=2); abline(h=yseq$breaks,lwd=1,col="grey"); abline(v=1:8,lwd=1,col="grey")
-    lines(1:8,dhourmean_var1,lwd=5,col="blue"); lines(1:8,dhourmean_var2,lwd=5,col="red")
+    lines(1:8,dhourmean_var1,lwd=5,col="blue")
+    points(1:8,dhourmean_var1,pch=19,cex=1.5,col="blue")
+    lines(1:8,dhourmean_var2,lwd=5,col="red")
+    points(1:8,dhourmean_var2,pch=19,cex=1.5,col="red")
     legend("top",legend=c(expname1,expname2),lwd=5,col=c("blue","red"),cex=3)
-
     dev.off()
     file_tmp <- paste0(file_out,".tmp.png")
     compress(file_in=file_out,file_out=file_tmp)
@@ -296,7 +345,7 @@ if (length(dep_variables) > 0) {
       next
     }
 
-    message("---> Plotting composite ",dep_name," using ",paste(available_fluxes,collapse=", "))
+    message("---> Plotting composite ",dep_name," using ",paste(available_fluxes,collapse=", "),if (regional_mode) paste0(" for ",region) else "")
     dep_data <- list()
 
     for (flux in available_fluxes) {
@@ -312,8 +361,16 @@ if (length(dep_variables) > 0) {
 
       field_var1 <- apply(d1$data,c(1,2),mean,na.rm=TRUE)
       field_var2 <- apply(d2$data,c(1,2),mean,na.rm=TRUE)
-      tmean_var1 <- global_flux_tg_day(d1$data,ll$lon,ll$lat)
-      tmean_var2 <- global_flux_tg_day(d2$data,ll$lon,ll$lat)
+
+      if (regional_mode) {
+        field_var1 <- mask_region_field(field_var1,ll$lon,ll$lat,region_box)
+        field_var2 <- mask_region_field(field_var2,ll$lon,ll$lat,region_box)
+        tmean_var1 <- regional_flux_tg_day(d1$data,ll$lon,ll$lat,region_box)
+        tmean_var2 <- regional_flux_tg_day(d2$data,ll$lon,ll$lat,region_box)
+      } else {
+        tmean_var1 <- global_flux_tg_day(d1$data,ll$lon,ll$lat)
+        tmean_var2 <- global_flux_tg_day(d2$data,ll$lon,ll$lat)
+      }
 
       tmean_tim <- seq.POSIXt(from=as.POSIXct(paste0(substr(sDate,1,4),"-",substr(sDate,5,6),"-",substr(sDate,7,8)," 00:00:00"),tz="UTC"),by="3 hours",length.out=d1$nt)
       hour <- as.integer(format(tmean_tim,"%H"))
@@ -323,7 +380,7 @@ if (length(dep_variables) > 0) {
       massdiag2 <- NULL
       massdiag_column <- c(ddp="DDEP_FLX",sdm="SEDM_FLX",ngt="NEGA_FIX")[flux]
 
-      if (!is.na(massdiag_column) && exists("massdiag_compare") && massdiag_compare) {
+      if (!regional_mode && !is.na(massdiag_column) && exists("massdiag_compare") && massdiag_compare) {
         massdiag1 <- read_massdiag_series_hours(expname1,logical_name,variables_exp1,seqDate,hours=massdiag_hours,column=massdiag_column)
         massdiag2 <- read_massdiag_series_hours(expname2,logical_name,variables_exp2,seqDate,hours=massdiag_hours,column=massdiag_column)
         massdiag1$value <- -massdiag1$value
@@ -351,7 +408,7 @@ if (length(dep_variables) > 0) {
     wet_massdiag1 <- NULL
     wet_massdiag2 <- NULL
 
-    if (all(c("wdl","wdc") %in% available_fluxes) && exists("massdiag_compare") && massdiag_compare) {
+    if (!regional_mode && all(c("wdl","wdc") %in% available_fluxes) && exists("massdiag_compare") && massdiag_compare) {
       wet_logical_name <- paste0("wdl_",dep_suffix)
       wet_massdiag1 <- read_massdiag_series_hours(expname1,wet_logical_name,variables_exp1,seqDate,hours=massdiag_hours,column="WDEP_FLX")
       wet_massdiag2 <- read_massdiag_series_hours(expname2,wet_logical_name,variables_exp2,seqDate,hours=massdiag_hours,column="WDEP_FLX")
@@ -362,7 +419,7 @@ if (length(dep_variables) > 0) {
     plot_category <- get_plot_category(dep_name)
     plot_dir <- paste0(path_plot,plot_category,"/")
     dir.create(plot_dir,recursive=TRUE,showWarnings=FALSE)
-    file_out <- paste0(plot_dir,gsub(" ","",plot_title),"_",dep_name,"_",expname1,"-",expname2,"_",sDate,"-",eDate,".png")
+    file_out <- paste0(plot_dir,gsub(" ","",plot_title),"_",dep_name,"_",expname1,"-",expname2,region_file_tag,"_",sDate,"-",eDate,".png")
 
     nflux <- length(available_fluxes)
     mat <- matrix(0,nrow=nflux+3,ncol=6)
@@ -383,7 +440,7 @@ if (length(dep_variables) > 0) {
     png(file_out,width=(0.2+3*3.9+0.8+0.8)*dpi,height=(0.23+0.15+2*nflux+2.5)*dpi)
     layout(mat=mat,widths=c(0.2,3.9,3.9,0.8,3.9,0.8),heights=c(0.23,0.15,rep(2,nflux),2.5))
 
-    par(mai=c(0,0,0,0)); plot.new(); text(0.5,0.5,paste0("Experiments: ",expname1," VS ",expname2,"   |   Type: ",get_display_type(dep_name),"   |   Period: ",sDate,"-",eDate),col="grey50",cex=6,family="Century Gothic"); abline(h=c(0,1),col="grey50",lwd=3)
+    par(mai=c(0,0,0,0)); plot.new(); text(0.5,0.5,paste0("Experiments: ",expname1," VS ",expname2,"   |   Type: ",get_display_type(dep_name),region_title,"   |   Period: ",sDate,"-",eDate),col="grey50",cex=6,family="Century Gothic"); abline(h=c(0,1),col="grey50",lwd=3)
     par(mai=c(0,0,0,0)); plot.new()
     par(mai=c(0,0,0,0)); plot.new(); text(0.5,0.5,paste0(expname1," (",exptype1,")"),col="grey20",cex=4.5,family="Century Gothic")
     par(mai=c(0,0,0,0)); plot.new(); text(0.5,0.5,paste0(expname2," (",exptype2,")"),col="grey20",cex=4.5,family="Century Gothic")
@@ -395,9 +452,9 @@ if (length(dep_variables) > 0) {
       z <- dep_data[[flux]]
       par(mai=c(0,0,0,0)); plot.new(); text(0.5,0.5,plot_type_title[[flux]],col="grey20",cex=5,family="Century Gothic",srt=90)
 
-      MapNC(filename_topo="",figure_box=figure_box,field_show_box=field_show_box,coastlineWorldFine_lwd=coastlineWorldFine_lwd,gridlines=gridlines,projection=projection,lonmax=lonmax,lonmin=lonmin,latmax=latmax,latmin=latmin,field_value=z$field_var1,field_lon=z$field_lon,field_lat=z$field_lat,field_pallete_name="TROPOMI_NEW",field_breaks=z$field_breaks,field_units=z$units,field_pallete_starting_alpha=100,field_show_legend=FALSE)
-      MapNC(filename_topo="",figure_box=figure_box,field_show_box=field_show_box,coastlineWorldFine_lwd=coastlineWorldFine_lwd,gridlines=gridlines,projection=projection,lonmax=lonmax,lonmin=lonmin,latmax=latmax,latmin=latmin,field_value=z$field_var2,field_lon=z$field_lon,field_lat=z$field_lat,field_pallete_name="TROPOMI_NEW",field_breaks=z$field_breaks,field_units=z$units,field_pallete_starting_alpha=100,field_show_legend=TRUE,field_legend_mai_right=1.8,field_legend_nlabels=7)
-      MapNC(filename_topo="",figure_box=figure_box,field_show_box=field_show_box,coastlineWorldFine_lwd=coastlineWorldFine_lwd,gridlines=gridlines,projection=projection,lonmax=lonmax,lonmin=lonmin,latmax=latmax,latmin=latmin,field_value=z$field_var2-z$field_var1,field_lon=z$field_lon,field_lat=z$field_lat,field_pallete_name="MNMB",field_breaks=z$field_breaks_diff,field_units=z$units,field_pallete_starting_alpha=100,field_show_legend=TRUE,field_legend_mai_right=1.8,field_legend_nlabels=7)
+      MapNC(filename_topo="",figure_box=figure_box,field_show_box=field_show_box,coastlineWorldFine_lwd=coastlineWorldFine_lwd,gridlines=gridlines,projection=projection,lonmax=lonmax,lonmin=lonmin,latmax=latmax,latmin=latmin,drawMapBox=regional_mode,field_value=z$field_var1,field_lon=z$field_lon,field_lat=z$field_lat,field_pallete_name="TROPOMI_NEW",field_breaks=z$field_breaks,field_units=z$units,field_pallete_starting_alpha=100,field_show_legend=FALSE)
+      MapNC(filename_topo="",figure_box=figure_box,field_show_box=field_show_box,coastlineWorldFine_lwd=coastlineWorldFine_lwd,gridlines=gridlines,projection=projection,lonmax=lonmax,lonmin=lonmin,latmax=latmax,latmin=latmin,drawMapBox=regional_mode,field_value=z$field_var2,field_lon=z$field_lon,field_lat=z$field_lat,field_pallete_name="TROPOMI_NEW",field_breaks=z$field_breaks,field_units=z$units,field_pallete_starting_alpha=100,field_show_legend=TRUE,field_legend_mai_right=1.8,field_legend_nlabels=7)
+      MapNC(filename_topo="",figure_box=figure_box,field_show_box=field_show_box,coastlineWorldFine_lwd=coastlineWorldFine_lwd,gridlines=gridlines,projection=projection,lonmax=lonmax,lonmin=lonmin,latmax=latmax,latmin=latmin,drawMapBox=regional_mode,field_value=z$field_var2-z$field_var1,field_lon=z$field_lon,field_lat=z$field_lat,field_pallete_name="MNMB",field_breaks=z$field_breaks_diff,field_units=z$units,field_pallete_starting_alpha=100,field_show_legend=TRUE,field_legend_mai_right=1.8,field_legend_nlabels=7)
     }
 
     tmean_tim <- dep_data[[available_fluxes[1]]]$tmean_tim
@@ -408,10 +465,13 @@ if (length(dep_variables) > 0) {
       if (!is.null(dep_data[[flux]]$massdiag1)) all_ts <- c(all_ts,dep_data[[flux]]$massdiag1$value,dep_data[[flux]]$massdiag2$value)
     }
 
-    if (!is.null(wet_massdiag1)) {
+    wet_output1 <- NULL
+    wet_output2 <- NULL
+    if (all(c("wdl","wdc") %in% available_fluxes)) {
       wet_output1 <- dep_data[["wdl"]]$tmean_var1 + dep_data[["wdc"]]$tmean_var1
       wet_output2 <- dep_data[["wdl"]]$tmean_var2 + dep_data[["wdc"]]$tmean_var2
-      all_ts <- c(all_ts,wet_output1,wet_output2,wet_massdiag1$value,wet_massdiag2$value)
+      all_ts <- c(all_ts,wet_output1,wet_output2)
+      if (!is.null(wet_massdiag1)) all_ts <- c(all_ts,wet_massdiag1$value,wet_massdiag2$value)
     }
 
     par(mai=c(2,2,0,0.4),family="Century Gothic")
@@ -422,7 +482,7 @@ if (length(dep_variables) > 0) {
 
     plot(x,type="n",axes=FALSE,ann=FALSE,ylim=c(min(yseq$breaks)-pad,max(yseq$breaks)+pad),yaxs="i")
     mtext("Time",side=1,line=12,cex=3.5)
-    mtext("Global flux (Tg/day)",side=2,line=11,cex=3.5)
+    mtext(if (regional_mode) paste0(region," flux (Tg/day)") else "Global flux (Tg/day)",side=2,line=11,cex=3.5)
 
     IDx_labels <- which(format(tmean_tim,"%H") == "00" & format(tmean_tim,"%d") %in% c("01","05","10","15","20","25"))
     IDx_labels <- unique(c(1,IDx_labels,length(tmean_tim)))
@@ -437,56 +497,59 @@ if (length(dep_variables) > 0) {
     midnight_idx <- get_midnight_idx(tmean_tim)
     for (flux in available_fluxes) {
       lines(x,dep_data[[flux]]$tmean_var1,lwd=5,col=dep_flux_colors[flux],lty=1)
-      points(x,dep_data[[flux]]$tmean_var1,pch=19,cex=1.5,col=dep_flux_colors[flux])
+      points(x,dep_data[[flux]]$tmean_var1,pch=19,cex=1.8,col=dep_flux_colors[flux])
       lines(x,dep_data[[flux]]$tmean_var2,lwd=5,col=dep_flux_colors[flux],lty=2)
-      points(x,dep_data[[flux]]$tmean_var2,pch=19,cex=1.5,col=dep_flux_colors[flux])
+      points(x,dep_data[[flux]]$tmean_var2,pch=19,cex=1.8,col=dep_flux_colors[flux])
       points(midnight_idx,dep_data[[flux]]$tmean_var1[midnight_idx],pch=19,cex=2.4,col=dep_flux_colors[flux])
       points(midnight_idx,dep_data[[flux]]$tmean_var2[midnight_idx],pch=19,cex=2.4,col=dep_flux_colors[flux])
     }
 
-    pch1 <- get_massdiag_pch(exptype1); pch2 <- get_massdiag_pch(exptype2)
+    pch1 <- get_massdiag_pch(exptype1)
+    pch2 <- get_massdiag_pch(exptype2)
 
     for (flux in available_fluxes) {
       z <- dep_data[[flux]]
-
       if (!is.null(z$massdiag1)) {
         mx1 <- as.numeric(difftime(z$massdiag1$time,tmean_tim[1],units="hours"))/3 + 1
         mx2 <- as.numeric(difftime(z$massdiag2$time,tmean_tim[1],units="hours"))/3 + 1
         valid1 <- mx1 >= 1 & mx1 <= length(tmean_tim) & is.finite(z$massdiag1$value)
         valid2 <- mx2 >= 1 & mx2 <= length(tmean_tim) & is.finite(z$massdiag2$value)
-
         points(mx1[valid1],z$massdiag1$value[valid1],pch=pch1,cex=2.6,lwd=2.5,col=dep_flux_colors[flux])
         points(mx2[valid2],z$massdiag2$value[valid2],pch=pch2,cex=2.6,lwd=2.5,col=dep_flux_colors[flux])
       }
     }
 
-    if (!is.null(wet_massdiag1)) {
+    if (!is.null(wet_output1)) {
       lines(x,wet_output1,lwd=5,col=dep_flux_colors["wdep"],lty=1)
-      points(x,wet_output1,pch=19,cex=1.5,col=dep_flux_colors["wdep"])
+      points(x,wet_output1,pch=19,cex=1.8,col=dep_flux_colors["wdep"])
       lines(x,wet_output2,lwd=5,col=dep_flux_colors["wdep"],lty=2)
-      points(x,wet_output2,pch=19,cex=1.5,col=dep_flux_colors["wdep"])
+      points(x,wet_output2,pch=19,cex=1.8,col=dep_flux_colors["wdep"])
       points(midnight_idx,wet_output1[midnight_idx],pch=19,cex=2.4,col=dep_flux_colors["wdep"])
       points(midnight_idx,wet_output2[midnight_idx],pch=19,cex=2.4,col=dep_flux_colors["wdep"])
 
-      mx1 <- as.numeric(difftime(wet_massdiag1$time,tmean_tim[1],units="hours"))/3 + 1
-      mx2 <- as.numeric(difftime(wet_massdiag2$time,tmean_tim[1],units="hours"))/3 + 1
-      valid1 <- mx1 >= 1 & mx1 <= length(tmean_tim) & is.finite(wet_massdiag1$value)
-      valid2 <- mx2 >= 1 & mx2 <= length(tmean_tim) & is.finite(wet_massdiag2$value)
-
-      points(mx1[valid1],wet_massdiag1$value[valid1],pch=pch1,cex=2.6,lwd=2.5,col=dep_flux_colors["wdep"])
-      points(mx2[valid2],wet_massdiag2$value[valid2],pch=pch2,cex=2.6,lwd=2.5,col=dep_flux_colors["wdep"])
+      if (!is.null(wet_massdiag1)) {
+        mx1 <- as.numeric(difftime(wet_massdiag1$time,tmean_tim[1],units="hours"))/3 + 1
+        mx2 <- as.numeric(difftime(wet_massdiag2$time,tmean_tim[1],units="hours"))/3 + 1
+        valid1 <- mx1 >= 1 & mx1 <= length(tmean_tim) & is.finite(wet_massdiag1$value)
+        valid2 <- mx2 >= 1 & mx2 <= length(tmean_tim) & is.finite(wet_massdiag2$value)
+        points(mx1[valid1],wet_massdiag1$value[valid1],pch=pch1,cex=2.6,lwd=2.5,col=dep_flux_colors["wdep"])
+        points(mx2[valid2],wet_massdiag2$value[valid2],pch=pch2,cex=2.6,lwd=2.5,col=dep_flux_colors["wdep"])
+      }
     }
 
     legend_fluxes <- toupper(available_fluxes)
     legend_colors <- dep_flux_colors[available_fluxes]
-
-    if (!is.null(wet_massdiag1)) {
+    if (!is.null(wet_output1)) {
       legend_fluxes <- c(legend_fluxes,"WDEP")
       legend_colors <- c(legend_colors,dep_flux_colors["wdep"])
     }
 
     legend("topleft",legend=legend_fluxes,lwd=6,col=legend_colors,lty=1,cex=2.3,bty="n")
-    legend("topright",legend=c(paste0(expname1," OUTPUT"),paste0(expname2," OUTPUT"),paste0(expname1," MASSDIA"),paste0(expname2," MASSDIA")),lwd=c(6,6,NA,NA),pch=c(19,19,get_massdiag_pch(exptype1),get_massdiag_pch(exptype2)),col=c("grey20","grey20","grey20","grey20"),lty=c(1,2,NA,NA),pt.lwd=c(1,1,2.5,2.5),cex=2.0,bty="n")
+    if (regional_mode) {
+      legend("topright",legend=c(expname1,expname2),lwd=6,pch=19,col="grey20",lty=c(1,2),cex=2.3,bty="n")
+    } else {
+      legend("topright",legend=c(paste0(expname1," OUTPUT"),paste0(expname2," OUTPUT"),paste0(expname1," MASSDIA"),paste0(expname2," MASSDIA")),lwd=c(6,6,NA,NA),pch=c(19,19,get_massdiag_pch(exptype1),get_massdiag_pch(exptype2)),col=c("grey20","grey20","grey20","grey20"),lty=c(1,2,NA,NA),pt.lwd=c(1,1,2.5,2.5),cex=2.0,bty="n")
+    }
 
     all_dc <- unlist(lapply(available_fluxes,function(flux) c(dep_data[[flux]]$dhourmean_var1,dep_data[[flux]]$dhourmean_var2)))
     par(mai=c(2,2,0,0.4),family="Century Gothic")
@@ -498,7 +561,7 @@ if (length(dep_variables) > 0) {
 
     plot(1:8,type="n",axes=FALSE,ann=FALSE,ylim=c(min(yseq$breaks)-pad,max(yseq$breaks)+pad),yaxs="i")
     mtext("Time (3 hourly UTC)",side=1,line=12,cex=3.5)
-    mtext("Global flux (Tg/day)",side=2,line=11,cex=3.5)
+    mtext(if (regional_mode) paste0(region," flux (Tg/day)") else "Global flux (Tg/day)",side=2,line=11,cex=3.5)
 
     axis(1,at=1:8,labels=c("00","03","06","09","12","15","18","21"),cex.axis=4,line=4,lty=0)
     axis(1,at=1:8,labels=FALSE,tck=0.01)

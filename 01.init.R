@@ -381,3 +381,22 @@ if (length(dep_variables) > 0) message("---> Composite deposition plots: ",paste
 
 if (nrow(variables_exp1) > 0) message("---> ",expname1," GRIBs: ",paste(unique(variables_exp1$grib),collapse="/"))
 if (nrow(variables_exp2) > 0) message("---> ",expname2," GRIBs: ",paste(unique(variables_exp2$grib),collapse="/"))
+
+###############
+### REGIONS ###
+###############
+regions <- list(
+  global    = c(-180,180,-90,90),
+  n_america = c(-158,-50,10,85),
+  us        = c(-130,-60,32,48),
+  s_america = c(-90,-30,-60,18),
+  africa    = c(-20,81,-40,38),
+  China     = c(100,135,22,45),
+  India     = c(35,95,5,70),
+  WUS       = c(-130,-100,32,48),
+  EUS       = c(-100,-60,32,48),
+  europe    = c(-18,40,30,70),
+  desert_aeronet = c(-180,180,-90,90),
+  ocean_aeronet  = c(-180,180,-90,90),
+  se_asia   = c(65,180,-23,50)
+)

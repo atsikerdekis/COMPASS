@@ -159,6 +159,44 @@ gridcell_area <- function(lon,lat) {
   matrix(rep(area_lat,each=nlon),nrow=nlon,ncol=nlat)
 }
 
+### Return longitude/latitude indices inside a region box:
+### box = c(lonmin,lonmax,latmin,latmax), longitudes interpreted in -180..180
+region_indices <- function(lon,lat,box) {
+  lon180 <- ((lon + 180) %% 360) - 180
+  lonmin <- box[1]; lonmax <- box[2]; latmin <- box[3]; latmax <- box[4]
+
+  if (lonmin <= lonmax) ilon <- which(lon180 >= lonmin & lon180 <= lonmax)
+  else ilon <- which(lon180 >= lonmin | lon180 <= lonmax)
+  ilat <- which(lat >= latmin & lat <= latmax)
+
+  if (length(ilon) == 0 || length(ilat) == 0)
+    stop("No model grid cells found inside region box: ",paste(box,collapse=", "))
+
+  list(lon=ilon,lat=ilat)
+}
+
+### Mask values outside a region while keeping the original global grid/dimensions
+mask_region_field <- function(field,lon,lat,box) {
+  idx <- region_indices(lon,lat,box)
+  out <- field
+
+  if (length(dim(field)) == 2) {
+    keep <- matrix(FALSE,nrow=length(lon),ncol=length(lat))
+    keep[idx$lon,idx$lat] <- TRUE
+    out[!keep] <- NA
+    return(out)
+  }
+
+  if (length(dim(field)) == 3) {
+    keep <- matrix(FALSE,nrow=length(lon),ncol=length(lat))
+    keep[idx$lon,idx$lat] <- TRUE
+    for (t in seq_len(dim(field)[3])) out[,,t][!keep] <- NA
+    return(out)
+  }
+
+  stop("mask_region_field expects a 2-D or 3-D field.")
+}
+
 global_mass_tg <- function(field,lon,lat) {
   area <- gridcell_area(lon,lat)
 
@@ -173,6 +211,23 @@ global_mass_tg <- function(field,lon,lat) {
   stop("global_mass_tg expects a 2-D or 3-D field.")
 }
 
+regional_mass_tg <- function(field,lon,lat,box) {
+  area <- gridcell_area(lon,lat)
+  idx <- region_indices(lon,lat,box)
+
+  if (length(dim(field)) == 2)
+    return(sum(field[idx$lon,idx$lat]*area[idx$lon,idx$lat],na.rm=TRUE)/1e9)
+
+  if (length(dim(field)) == 3) {
+    result <- numeric(dim(field)[3])
+    for (t in seq_len(dim(field)[3]))
+      result[t] <- sum(field[idx$lon,idx$lat,t]*area[idx$lon,idx$lat],na.rm=TRUE)/1e9
+    return(result)
+  }
+
+  stop("regional_mass_tg expects a 2-D or 3-D field.")
+}
+
 global_flux_tg_day <- function(field,lon,lat) {
   area <- gridcell_area(lon,lat)
   if (length(dim(field)) == 2) return(sum(field*area,na.rm=TRUE)*86400/1e9)
@@ -184,6 +239,39 @@ global_flux_tg_day <- function(field,lon,lat) {
   }
 
   stop("global_flux_tg_day expects a 2-D or 3-D field.")
+}
+
+regional_flux_tg_day <- function(field,lon,lat,box) {
+  area <- gridcell_area(lon,lat)
+  idx <- region_indices(lon,lat,box)
+
+  if (length(dim(field)) == 2)
+    return(sum(field[idx$lon,idx$lat]*area[idx$lon,idx$lat],na.rm=TRUE)*86400/1e9)
+
+  if (length(dim(field)) == 3) {
+    result <- numeric(dim(field)[3])
+    for (t in seq_len(dim(field)[3]))
+      result[t] <- sum(field[idx$lon,idx$lat,t]*area[idx$lon,idx$lat],na.rm=TRUE)*86400/1e9
+    return(result)
+  }
+
+  stop("regional_flux_tg_day expects a 2-D or 3-D field.")
+}
+
+regional_mean <- function(field,lon,lat,box) {
+  idx <- region_indices(lon,lat,box)
+
+  if (length(dim(field)) == 2)
+    return(mean(field[idx$lon,idx$lat],na.rm=TRUE))
+
+  if (length(dim(field)) == 3) {
+    result <- numeric(dim(field)[3])
+    for (t in seq_len(dim(field)[3]))
+      result[t] <- mean(field[idx$lon,idx$lat,t],na.rm=TRUE)
+    return(result)
+  }
+
+  stop("regional_mean expects a 2-D or 3-D field.")
 }
 
 massdiag_file <- function(expname,date) {
@@ -224,5 +312,3 @@ read_massdiag_series_hours <- function(expname,logical_name,variable_table,dates
   times <- as.POSIXct(paste0(substr(grid$date,1,4),"-",substr(grid$date,5,6),"-",substr(grid$date,7,8)," ",sprintf("%02d",grid$hour),":00:00"),tz="UTC")
   list(time=times,value=as.numeric(values))
 }
-
-

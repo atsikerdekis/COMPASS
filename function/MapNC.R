@@ -587,19 +587,6 @@ MapNC <- function(
     plot(0, 0, type="n", ann=FALSE, axes=FALSE)
     user <- par("usr")
     rect(user[1], user[3], user[2], user[4], col=col_ocean, border=NA)
-    ### Global field value mean
-    if (field_value_mean_global==T) {
-      points_x <- -0.85
-      points_y <- -0.88
-      #points(points_x,points_y,col="black", pch=15, cex=30)
-      #points(points_x,points_y,col="white", pch=15, cex=29)
-      text(points_x,points_y,paste0("MN\n",format(mean(field_value,na.rm=T), scientific=TRUE, digits=2)),col="black", pch=15, cex=4.0, family="Century Gothic")
-      points_x <- +0.85
-      points_y <- -0.88
-      #points(points_x,points_y,col="black", pch=15, cex=30)
-      #points(points_x,points_y,col="white", pch=15, cex=29)
-      text(points_x,points_y,paste0("SD\n",format(sd(field_value,na.rm=T), scientific=TRUE, digits=2)),col="black", pch=15, cex=4.0, family="Century Gothic")
-    }
     par(new=TRUE)
     par(new=TRUE)
   }
@@ -632,9 +619,19 @@ MapNC <- function(
     mapImage(fieldflag_lon, fieldflag_lat, fieldflag_value, colormap=flag_pallete ) 
   }
   
-  
-  
-  
+  ### Field statistics
+  if (field_value_mean_global==TRUE && missing(field_value)==FALSE) {
+    usr        <- par("usr")
+    xpos_left  <- usr[1] + 0.04*(usr[2]-usr[1])
+    xpos_right <- usr[2] - 0.04*(usr[2]-usr[1])
+    ypos       <- usr[3] + 0.06*(usr[4]-usr[3])
+
+    text(xpos_left,ypos,paste0("MN\n",format(mean(field_value,na.rm=TRUE),scientific=TRUE,digits=2)),
+         col="black",cex=4.0,family="Century Gothic",adj=c(0,0))
+
+    text(xpos_right,ypos,paste0("SD\n",format(sd(field_value,na.rm=TRUE),scientific=TRUE,digits=2)),
+         col="black",cex=4.0,family="Century Gothic",adj=c(1,0))
+  }  
   
   ### Density
   #if (missing(shade_value)==FALSE) { mapShade(shade_lon, shade_lat, shade_value, col=c("#FFFFFF00","grey50"), breaks=c(-Inf,shade_thresh,Inf), density=shade_density, lwd=shade_lwd) }
@@ -792,8 +789,8 @@ MapNC <- function(
     }
     if (legend_decimals==T) { axis(4, at=mylegend_at, labels=format(mylegend_labels, scientific=TRUE, digits=2), cex.axis=field_legend_cex, tick=T, las=1, family="Century Gothic") }
     if (legend_decimals==F) { axis(4, at=mylegend_at, labels=mylegend_labels, cex.axis=field_legend_cex, tick=T, las=1, family="Century Gothic") }
-    axis(3,legend_units_potition, field_units, las=1, line=2.5, tick=F, cex.axis=field_legend_cex, family="Century Gothic")
-    
+    mtext(field_units,side=3,line=3.5,adj=1,cex=field_legend_cex/1.8,family="Century Gothic")
+ 
     ### Box around the field legend
     box(lwd=2, col="black")
   }

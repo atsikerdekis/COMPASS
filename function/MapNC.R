@@ -789,7 +789,7 @@ MapNC <- function(
     }
     if (legend_decimals==T) { axis(4, at=mylegend_at, labels=format(mylegend_labels, scientific=TRUE, digits=2), cex.axis=field_legend_cex, tick=T, las=1, family="Century Gothic") }
     if (legend_decimals==F) { axis(4, at=mylegend_at, labels=mylegend_labels, cex.axis=field_legend_cex, tick=T, las=1, family="Century Gothic") }
-    mtext(field_units,side=3,line=3.5,adj=1,cex=field_legend_cex/1.8,family="Century Gothic")
+    mtext(paste0("    ",field_units),side=3,line=3.5,adj=1,cex=field_legend_cex/1.8,family="Century Gothic")
  
     ### Box around the field legend
     box(lwd=2, col="black")

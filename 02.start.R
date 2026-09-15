@@ -41,7 +41,7 @@ vdate2 <- gsub("-","",seq.Date(sDate_temp,eDate_temp,paste0(step," day")))
 if (runtype == "download") {
 
   message("---> Download mode...")
-  
+
   if (exists("massdiag_compare") && massdiag_compare) {
     for (e in 1:2) {
       if (e == 1) expname <- expname1 else expname <- expname2
@@ -79,19 +79,27 @@ if (runtype == "download") {
       ### SELECT PARAMETERS ###
       #########################
 
-      ### Pressure-level diagnostics
+      ### Pressure-level aerosol diagnostics
       params_pl <- unique(expvars$grib[expvars$grib_column == "grib"])
       params_pl <- params_pl[!is.na(params_pl) & params_pl != ""]
       params_pl <- paste(params_pl,collapse="/")
 
-      ### Surface diagnostics
+      ### Surface aerosol diagnostics
       surface_columns <- c("gribddp","gribsdm","gribwdl","gribwdc","gribmss","gribngt")
       params_sfc <- unique(expvars$grib[expvars$grib_column %in% surface_columns])
       params_sfc <- params_sfc[!is.na(params_sfc) & params_sfc != ""]
       params_sfc <- paste(params_sfc,collapse="/")
 
+      ### Model levels required for derived RH diagnostics
+      levels_ml <- ""
+      if (length(rh_variables) > 0) {
+        levels_ml <- unique(rh_definitions$model_level[rh_definitions$logical_name %in% rh_variables])
+        levels_ml <- paste(sort(levels_ml),collapse="/")
+      }
+
       message("---> PL parameters: ",ifelse(params_pl == "","none",params_pl))
       message("---> SFC parameters: ",ifelse(params_sfc == "","none",params_sfc))
+      message("---> RH model levels: ",ifelse(levels_ml == "","none",levels_ml))
 
       ########################
       ### SURFACE DOWNLOAD ###
@@ -121,6 +129,22 @@ if (runtype == "download") {
           PATH_program = paste0(path_PYTHON,"python"),
           PATH_script  = paste0(path_code,"03.download_pl.py"),
           SCRIPT_flag  = paste(expname,expclass,vdate1[d],vdate2[d],path_data,params_pl)
+        )
+
+      }
+
+      ############################
+      ### RH MODEL-LEVEL DOWNLOAD ###
+      ############################
+      if (levels_ml != "") {
+
+        SubmitJob(
+          JOB_name     = paste0("download_ml_rh_",expname,"_",vdate1[d],"_",vdate2[d]),
+          JOB_out      = paste0(path_log,"download_ml_rh_",expname,"_",vdate1[d],"_",vdate2[d],".out"),
+          JOB_err      = paste0(path_log,"download_ml_rh_",expname,"_",vdate1[d],"_",vdate2[d],".out"),
+          PATH_program = paste0(path_PYTHON,"python"),
+          PATH_script  = paste0(path_code,"03.download_ml.py"),
+          SCRIPT_flag  = paste(expname,expclass,vdate1[d],vdate2[d],path_data,levels_ml)
         )
 
       }

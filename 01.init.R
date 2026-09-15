@@ -102,19 +102,49 @@ ham_component_rows <- grepl(
   ham_names
 )
 
+#####################################
+### RELATIVE HUMIDITY DEFINITIONS ###
+#####################################
+### RH is a derived meteorological diagnostic and is intentionally kept
+### outside the aerosol GRIB-table resolver. The selected L137 levels are
+### nominal levels nearest the requested approximate heights.
+rh_definitions <- data.frame(
+  logical_name     = c("rh","rh_500m","rh_1000m","rh_1500m","rh_2000m","rh_3000m"),
+  model_level      = c(137,124,118,114,110,105),
+  approx_height_m  = c(10,501,987,1460,2081,3089),
+  stringsAsFactors = FALSE
+)
+
+rh_supported <- rh_definitions$logical_name
+get_rh_definition <- function(logical_name) {
+  x <- rh_definitions[rh_definitions$logical_name == logical_name,,drop=FALSE]
+  if (nrow(x) != 1) stop("Unsupported RH variable: ",logical_name)
+  x
+}
+
 ######################################
 ### EXPAND COMPOSITE DEP VARIABLES ###
 ######################################
 variables_requested <- variables
+
+invalid_rh <- variables_requested[startsWith(variables_requested,"rh") & !variables_requested %in% rh_supported]
+if (length(invalid_rh) > 0) {
+  stop("Unsupported RH variable(s): ",paste(invalid_rh,collapse=", "),
+       ". Available RH variables: ",paste(rh_supported,collapse=", "))
+}
+
+rh_variables <- variables_requested[variables_requested %in% rh_supported]
+aerosol_variables_requested <- variables_requested[!variables_requested %in% rh_variables]
+
 dep_fluxes <- c("ddp","sdm","wdl","wdc","ngt")
-dep_variables <- variables_requested[startsWith(variables_requested,"dep_")]
+dep_variables <- aerosol_variables_requested[startsWith(aerosol_variables_requested,"dep_")]
 
 expand_dep_variable <- function(x) {
   suffix <- sub("^dep_","",x)
   paste0(dep_fluxes,"_",suffix)
 }
 
-variables_for_resolution <- variables_requested[!startsWith(variables_requested,"dep_")]
+variables_for_resolution <- aerosol_variables_requested[!startsWith(aerosol_variables_requested,"dep_")]
 
 if (length(dep_variables) > 0) {
   for (x in dep_variables) variables_for_resolution <- c(variables_for_resolution,expand_dep_variable(x))
@@ -138,7 +168,7 @@ make_result <- function(logical_name,idx,grib_column,table) {
   if (length(idx) == 0) {
     stop("Variable '",logical_name,"' has no available values in column '",grib_column,"'.")
   }
-  
+
   data.frame(
     logical_name = rep(logical_name,length(idx)),
     csv_name     = table$name[idx],
@@ -348,7 +378,14 @@ if (mixed_aerosol_schemes) {
 ###################################
 resolve_variables <- function(exptype,variables) {
 
-  result <- data.frame()
+  result <- data.frame(
+    logical_name=character(),
+    csv_name=character(),
+    massdiag_name=character(),
+    grib_column=character(),
+    grib=character(),
+    stringsAsFactors=FALSE
+  )
 
   for (logical_name in variables) {
 
@@ -375,9 +412,16 @@ variables_exp2 <- resolve_variables(exptype2,variables_for_resolution)
 ###################
 ### INFORMATION ###
 ###################
-message("---> ",expname1," (",exptype1,"): ",paste(unique(variables_exp1$logical_name),collapse=", "))
-message("---> ",expname2," (",exptype2,"): ",paste(unique(variables_exp2$logical_name),collapse=", "))
+message("---> ",expname1," (",exptype1,"): ",if (nrow(variables_exp1) > 0) paste(unique(variables_exp1$logical_name),collapse=", ") else "no aerosol diagnostics")
+message("---> ",expname2," (",exptype2,"): ",if (nrow(variables_exp2) > 0) paste(unique(variables_exp2$logical_name),collapse=", ") else "no aerosol diagnostics")
 if (length(dep_variables) > 0) message("---> Composite deposition plots: ",paste(dep_variables,collapse=", "))
+if (length(rh_variables) > 0) {
+  rh_info <- sapply(rh_variables,function(x) {
+    z <- get_rh_definition(x)
+    paste0(x," (ML",z$model_level,", ~",z$approx_height_m," m)")
+  })
+  message("---> Relative humidity: ",paste(rh_info,collapse=", "))
+}
 
 if (nrow(variables_exp1) > 0) message("---> ",expname1," GRIBs: ",paste(unique(variables_exp1$grib),collapse="/"))
 if (nrow(variables_exp2) > 0) message("---> ",expname2," GRIBs: ",paste(unique(variables_exp2$grib),collapse="/"))

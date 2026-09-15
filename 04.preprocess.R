@@ -137,6 +137,148 @@ read_column_burden <- function(file,exptype,logical_name,variable_table) {
   burden
 }
 
+
+###################################
+### RELATIVE HUMIDITY FUNCTIONS ###
+###################################
+
+### L137 half-level a/b coefficients needed for the six supported RH levels.
+### Full-level pressure:
+### p_half(n) = a(n) + b(n)*ps
+### p_full(k) = 0.5*(p_half(k-1) + p_half(k))
+l137_half_coeff <- data.frame(
+  n = c(104,105,109,110,113,114,117,118,123,124,136,137),
+  a = c(
+    12668.257813,11901.339844,
+    8880.453125,8163.375000,
+    6168.531250,5564.382813,
+    3955.960938,3489.234375,
+    1659.476563,1387.546875,
+    0.000000,0.000000
+  ),
+  b = c(
+    0.549301,0.576692,
+    0.680643,0.704669,
+    0.770798,0.790717,
+    0.843881,0.859432,
+    0.922096,0.931881,
+    0.997630,1.000000
+  )
+)
+
+rh_ml_file <- function(expname,date) {
+  paste0(path_data,expname,"/CAMS_",expname,"_forecast00to21by03_0.7x0.7_ml_",date,".nc")
+}
+
+rh_lnsp_file <- function(expname,date) {
+  paste0(path_data,expname,"/CAMS_",expname,"_forecast00to21by03_0.7x0.7_lnsp_",date,".nc")
+}
+
+model_level_pressure <- function(ps,model_level) {
+  upper <- l137_half_coeff[l137_half_coeff$n == model_level-1,,drop=FALSE]
+  lower <- l137_half_coeff[l137_half_coeff$n == model_level,,drop=FALSE]
+
+  if (nrow(upper) != 1 || nrow(lower) != 1)
+    stop("Missing L137 a/b coefficients for model level ",model_level)
+
+  p_upper <- upper$a + upper$b*ps
+  p_lower <- lower$a + lower$b*ps
+
+  0.5*(p_upper+p_lower)
+}
+
+### Saturation vapour pressure [Pa], Buck formulation over liquid water.
+saturation_vapour_pressure <- function(T) {
+  Tc <- T-273.15
+  611.21*exp((18.678-Tc/234.5)*(Tc/(257.14+Tc)))
+}
+
+### Relative humidity [%] from q [kg kg-1], T [K], p [Pa].
+relative_humidity_from_qtp <- function(q,T,p) {
+  epsilon <- 0.621981
+  e <- q*p/(epsilon+(1-epsilon)*q)
+  es <- saturation_vapour_pressure(T)
+  rh <- 100*e/es
+  rh[rh < 0] <- NA_real_
+  rh
+}
+
+### Read/calculate one RH diagnostic for one day.
+### Returns lon x lat x time.
+read_relative_humidity <- function(expname,date,logical_name) {
+
+  def <- get_rh_definition(logical_name)
+  model_level <- def$model_level
+
+  file_ml <- rh_ml_file(expname,date)
+  file_lnsp <- rh_lnsp_file(expname,date)
+
+  if (!file.exists(file_ml)) stop("RH model-level file not found: ",file_ml)
+  if (!file.exists(file_lnsp)) stop("RH lnsp file not found: ",file_lnsp)
+
+  nc_ml <- nc_open(file_ml)
+  on.exit(nc_close(nc_ml),add=TRUE)
+
+  nc_lnsp <- nc_open(file_lnsp)
+  on.exit(nc_close(nc_lnsp),add=TRUE)
+
+  T_name <- grib_to_ncname("130.128")
+  q_name <- grib_to_ncname("133.128")
+  lnsp_name <- grib_to_ncname("152.128")
+
+  if (!T_name %in% names(nc_ml$var)) stop("Temperature variable ",T_name," not found in ",file_ml)
+  if (!q_name %in% names(nc_ml$var)) stop("Specific humidity variable ",q_name," not found in ",file_ml)
+  if (!lnsp_name %in% names(nc_lnsp$var)) stop("lnsp variable ",lnsp_name," not found in ",file_lnsp)
+
+  ### Find model-level coordinate name used by the NetCDF
+  level_candidates <- c("level","hybrid","model_level","lev")
+  level_name <- level_candidates[level_candidates %in% c(names(nc_ml$dim),names(nc_ml$var))]
+
+  if (length(level_name) == 0) {
+    stop(
+      "Could not identify model-level coordinate in ",file_ml,
+      ". Available dimensions: ",paste(names(nc_ml$dim),collapse=", "),
+      " | variables: ",paste(names(nc_ml$var),collapse=", ")
+    )
+  }
+
+  level_name <- level_name[1]
+  levels <- ncvar_get(nc_ml,level_name)
+  ilev <- which(levels == model_level)
+
+  if (length(ilev) != 1)
+    stop(
+      "Model level ",model_level," not found uniquely in ",file_ml,
+      ". Vertical coordinate: ",level_name,
+      " | available levels: ",paste(levels,collapse=", ")
+    )
+
+  T <- ncvar_get(nc_ml,T_name)
+  q <- ncvar_get(nc_ml,q_name)
+  lnsp <- ncvar_get(nc_lnsp,lnsp_name)
+
+  if (length(dim(T)) == 4) T <- drop(T[,,ilev,,drop=FALSE])
+  if (length(dim(q)) == 4) q <- drop(q[,,ilev,,drop=FALSE])
+
+  if (length(dim(T)) != 3 || length(dim(q)) != 3)
+    stop("Unexpected T/q dimensions in ",file_ml,
+         ". Expected lon x lat x time after model-level selection.")
+
+  lnsp <- drop(lnsp)
+
+  if (length(dim(lnsp)) != 3)
+    stop("Unexpected lnsp dimensions in ",file_lnsp,
+         ". Expected lon x lat x time after dropping singleton dimensions.")
+
+  ps <- exp(lnsp)
+  p <- model_level_pressure(ps,model_level)
+
+  if (!all(dim(T) == dim(q)) || !all(dim(T) == dim(p)))
+    stop("T, q and pressure dimensions do not match for ",logical_name)
+
+  relative_humidity_from_qtp(q,T,p)
+}
+
 ### GRIDCELL AREA
 gridcell_area <- function(lon,lat) {
   R <- 6371000
@@ -190,7 +332,11 @@ mask_region_field <- function(field,lon,lat,box) {
   if (length(dim(field)) == 3) {
     keep <- matrix(FALSE,nrow=length(lon),ncol=length(lat))
     keep[idx$lon,idx$lat] <- TRUE
-    for (t in seq_len(dim(field)[3])) out[,,t][!keep] <- NA
+    for (t in seq_len(dim(field)[3])) {
+      temp <- out[,,t]
+      temp[!keep] <- NA
+      out[,,t] <- temp
+    }
     return(out)
   }
 

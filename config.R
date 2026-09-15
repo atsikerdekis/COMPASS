@@ -9,7 +9,7 @@ exptype2  <- "HAM"
 expclass2 <- "nl"
 ### Period
 sDate   <- "20190101"
-eDate   <- "20190105"
+eDate   <- "20190102"
 ### Runtype
 runtype <- "plot" # plot | download
 ### Other
@@ -27,8 +27,13 @@ region <- "China"
 
 ### VARIABLES
 variables <- c(
-  "mss_ni"
+  "rh"
 )
+
+### VARIABLES
+#variables <- c(
+#  "mss_ni", "mss_su"
+#)
 
 ### VARIABLES
 #variables <- c(

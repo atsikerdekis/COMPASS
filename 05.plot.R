@@ -367,7 +367,7 @@ if (length(rh_variables) > 0) {
     data1 <- array(unlist(field_day1),dim=c(nx1,ny1,nt1))
     data2 <- array(unlist(field_day2),dim=c(nx2,ny2,nt2))
 
-    file1 <- rh_ml_file(expname1,seqDate[1])
+    file1 <- rh_ml_file(expname1,seqDate[1],logical_name)
     ll <- read_lon_lat(file1)
     field_lon <- ll$lon
     field_lat <- ll$lat

@@ -9,7 +9,7 @@ exptype2  <- "HAM"
 expclass2 <- "nl"
 ### Period
 sDate   <- "20190101"
-eDate   <- "20190102"
+eDate   <- "20190131"
 ### Runtype
 runtype <- "plot" # plot | download
 ### Other
@@ -27,7 +27,12 @@ region <- "China"
 
 ### VARIABLES
 variables <- c(
-  "rh"
+  "rh"        # ML137, ~surface / ~10 m
+#  "rh_500m",   # ML124, ~500 m
+#  "rh_1000m",  # ML118, ~1000 m
+#  "rh_1500m",  # ML114, ~1500 m
+#  "rh_2000m",  # ML110, ~2000 m
+#  "rh_3000m"   # ML105, ~3000 m
 )
 
 ### VARIABLES

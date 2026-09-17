@@ -48,32 +48,33 @@ def retrieve_global(expname,expclass,day,path_data,levels):
 
     if not os.path.exists(OUT_DIR): os.makedirs(OUT_DIR)
 
-    # T and q on requested model levels. ECMWF GRIB1 table 128:
-    # 130 = temperature, 133 = specific humidity.
+    # T and q are stored one model level per file. This avoids ambiguity when
+    # different RH heights are requested in separate COMPASS runs.
     params_ml = "130.128/133.128"
-    output_ml = OUT_DIR + f"/CAMS_{expname}_forecast00to21by03_0.7x0.7_ml_{daystrip}.nc"
-    temp_ml = TEMP_DIR + f"Temp_CAMS_{expname}_ml_{daystrip}.nc"
-
-    # ln(surface pressure), GRIB 152, is needed to reconstruct pressure
-    # on the selected hybrid model levels. It is archived on ML1.
-    params_lnsp = "152.128"
-    output_lnsp = OUT_DIR + f"/CAMS_{expname}_forecast00to21by03_0.7x0.7_lnsp_{daystrip}.nc"
-    temp_lnsp = TEMP_DIR + f"Temp_CAMS_{expname}_lnsp_{daystrip}.nc"
+    model_levels = sorted({int(x) for x in levels.split("/")})
 
     server = ECMWFService("mars")
 
-    if not os.path.isfile(output_ml):
+    for model_level in model_levels:
+        output_ml = OUT_DIR + f"/CAMS_{expname}_forecast00to21by03_0.7x0.7_ml_{model_level}_{daystrip}.nc"
+        temp_ml = TEMP_DIR + f"Temp_CAMS_{expname}_ml_{model_level}_{daystrip}.nc"
+
+        if os.path.isfile(output_ml):
+            print(f"File {output_ml} already exists, skipping...")
+            continue
+
         if os.path.isfile(temp_ml): os.remove(temp_ml)
 
         @retry(stop=stop_after_attempt(1))
         def retry_ml():
             print("Trying to download model-level T/q:",temp_ml)
-            print("Levels:",levels)
+            print("Model level:",model_level)
+
             server.execute({
                 "class": expclass,
                 "date": day,
                 "expver": expname,
-                "levelist": levels,
+                "levelist": str(model_level),
                 "levtype": "ml",
                 "param": params_ml,
                 "step": "0/3/6/9/12/15/18/21",
@@ -87,10 +88,14 @@ def retrieve_global(expname,expclass,day,path_data,levels):
         retry_ml()
         normalize_variable_names(temp_ml,params_ml)
         subprocess.run(["ncpdq","-O","-4","-L","1",temp_ml,output_ml],check=True)
+
         if os.path.isfile(temp_ml): os.remove(temp_ml)
         print("Model-level output:",output_ml)
-    else:
-        print(f"File {output_ml} already exists, skipping...")
+
+    # ln(surface pressure), GRIB 152, is shared by all requested RH levels.
+    params_lnsp = "152.128"
+    output_lnsp = OUT_DIR + f"/CAMS_{expname}_forecast00to21by03_0.7x0.7_lnsp_{daystrip}.nc"
+    temp_lnsp = TEMP_DIR + f"Temp_CAMS_{expname}_lnsp_{daystrip}.nc"
 
     if not os.path.isfile(output_lnsp):
         if os.path.isfile(temp_lnsp): os.remove(temp_lnsp)
@@ -98,6 +103,7 @@ def retrieve_global(expname,expclass,day,path_data,levels):
         @retry(stop=stop_after_attempt(1))
         def retry_lnsp():
             print("Trying to download lnsp:",temp_lnsp)
+
             server.execute({
                 "class": expclass,
                 "date": day,
@@ -116,6 +122,7 @@ def retrieve_global(expname,expclass,day,path_data,levels):
         retry_lnsp()
         normalize_variable_names(temp_lnsp,params_lnsp)
         subprocess.run(["ncpdq","-O","-4","-L","1",temp_lnsp,output_lnsp],check=True)
+
         if os.path.isfile(temp_lnsp): os.remove(temp_lnsp)
         print("lnsp output:",output_lnsp)
     else:

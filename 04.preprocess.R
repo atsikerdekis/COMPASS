@@ -143,7 +143,6 @@ read_column_burden <- function(file,exptype,logical_name,variable_table) {
 ###################################
 
 ### L137 half-level a/b coefficients needed for the six supported RH levels.
-### Full-level pressure:
 ### p_half(n) = a(n) + b(n)*ps
 ### p_full(k) = 0.5*(p_half(k-1) + p_half(k))
 l137_half_coeff <- data.frame(
@@ -166,12 +165,16 @@ l137_half_coeff <- data.frame(
   )
 )
 
-rh_ml_file <- function(expname,date) {
-  paste0(path_data,expname,"/CAMS_",expname,"_forecast00to21by03_0.7x0.7_ml_",date,".nc")
+### Each RH level is stored in its own ML file.
+rh_ml_file <- function(expname,date,logical_name) {
+  model_level <- get_rh_definition(logical_name)$model_level
+  paste0(path_data,expname,"/CAMS_",expname,
+         "_forecast00to21by03_0.7x0.7_ml_",model_level,"_",date,".nc")
 }
 
 rh_lnsp_file <- function(expname,date) {
-  paste0(path_data,expname,"/CAMS_",expname,"_forecast00to21by03_0.7x0.7_lnsp_",date,".nc")
+  paste0(path_data,expname,"/CAMS_",expname,
+         "_forecast00to21by03_0.7x0.7_lnsp_",date,".nc")
 }
 
 model_level_pressure <- function(ps,model_level) {
@@ -204,13 +207,15 @@ relative_humidity_from_qtp <- function(q,T,p) {
 }
 
 ### Read/calculate one RH diagnostic for one day.
-### Returns lon x lat x time.
+### The ML files contain exactly one requested model level. MARS may therefore
+### omit the singleton vertical coordinate completely; the level is known from
+### the logical variable name and filename.
 read_relative_humidity <- function(expname,date,logical_name) {
 
   def <- get_rh_definition(logical_name)
   model_level <- def$model_level
 
-  file_ml <- rh_ml_file(expname,date)
+  file_ml <- rh_ml_file(expname,date,logical_name)
   file_lnsp <- rh_lnsp_file(expname,date)
 
   if (!file.exists(file_ml)) stop("RH model-level file not found: ",file_ml)
@@ -230,51 +235,28 @@ read_relative_humidity <- function(expname,date,logical_name) {
   if (!q_name %in% names(nc_ml$var)) stop("Specific humidity variable ",q_name," not found in ",file_ml)
   if (!lnsp_name %in% names(nc_lnsp$var)) stop("lnsp variable ",lnsp_name," not found in ",file_lnsp)
 
-  ### Find model-level coordinate name used by the NetCDF
-  level_candidates <- c("level","hybrid","model_level","lev")
-  level_name <- level_candidates[level_candidates %in% c(names(nc_ml$dim),names(nc_ml$var))]
-
-  if (length(level_name) == 0) {
-    stop(
-      "Could not identify model-level coordinate in ",file_ml,
-      ". Available dimensions: ",paste(names(nc_ml$dim),collapse=", "),
-      " | variables: ",paste(names(nc_ml$var),collapse=", ")
-    )
-  }
-
-  level_name <- level_name[1]
-  levels <- ncvar_get(nc_ml,level_name)
-  ilev <- which(levels == model_level)
-
-  if (length(ilev) != 1)
-    stop(
-      "Model level ",model_level," not found uniquely in ",file_ml,
-      ". Vertical coordinate: ",level_name,
-      " | available levels: ",paste(levels,collapse=", ")
-    )
-
-  T <- ncvar_get(nc_ml,T_name)
-  q <- ncvar_get(nc_ml,q_name)
-  lnsp <- ncvar_get(nc_lnsp,lnsp_name)
-
-  if (length(dim(T)) == 4) T <- drop(T[,,ilev,,drop=FALSE])
-  if (length(dim(q)) == 4) q <- drop(q[,,ilev,,drop=FALSE])
+  T <- drop(ncvar_get(nc_ml,T_name))
+  q <- drop(ncvar_get(nc_ml,q_name))
+  lnsp <- drop(ncvar_get(nc_lnsp,lnsp_name))
 
   if (length(dim(T)) != 3 || length(dim(q)) != 3)
     stop("Unexpected T/q dimensions in ",file_ml,
-         ". Expected lon x lat x time after model-level selection.")
-
-  lnsp <- drop(lnsp)
+         ". Expected lon x lat x time for the single downloaded ML. T=",
+         paste(dim(T),collapse="x")," q=",paste(dim(q),collapse="x"))
 
   if (length(dim(lnsp)) != 3)
     stop("Unexpected lnsp dimensions in ",file_lnsp,
-         ". Expected lon x lat x time after dropping singleton dimensions.")
+         ". Expected lon x lat x time after dropping singleton dimensions. lnsp=",
+         paste(dim(lnsp),collapse="x"))
 
   ps <- exp(lnsp)
   p <- model_level_pressure(ps,model_level)
 
   if (!all(dim(T) == dim(q)) || !all(dim(T) == dim(p)))
-    stop("T, q and pressure dimensions do not match for ",logical_name)
+    stop("T, q and pressure dimensions do not match for ",logical_name,
+         ": T=",paste(dim(T),collapse="x"),
+         ", q=",paste(dim(q),collapse="x"),
+         ", p=",paste(dim(p),collapse="x"))
 
   relative_humidity_from_qtp(q,T,p)
 }

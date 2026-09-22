@@ -25,15 +25,17 @@ grib_table_HAM <- "config/bins_hamm7ver4.0.csv"
 ### REGION
 region <- "China"
 
+variables <- c("precip_total","precip_convective","precip_large_scale")
+
 ### VARIABLES
-variables <- c(
-  "rh"        # ML137, ~surface / ~10 m
+#variables <- c(
+#  "rh"        # ML137, ~surface / ~10 m
 #  "rh_500m",   # ML124, ~500 m
 #  "rh_1000m",  # ML118, ~1000 m
 #  "rh_1500m",  # ML114, ~1500 m
 #  "rh_2000m",  # ML110, ~2000 m
 #  "rh_3000m"   # ML105, ~3000 m
-)
+#)
 
 ### VARIABLES
 #variables <- c(

@@ -528,6 +528,215 @@ if (length(rh_variables) > 0) {
   }
 }
 
+
+#########################
+### PRECIPITATION PLOTS ###
+#########################
+if (length(precip_variables) > 0) {
+
+  for (logical_name in precip_variables) {
+
+    def <- get_precip_definition(logical_name)
+
+    message("---> Plotting ",logical_name,
+            if (regional_mode) paste0(" for ",region) else "")
+
+    field_day1 <- list()
+    field_day2 <- list()
+
+    for (d in seq_along(seqDate)) {
+      field_day1[[d]] <- read_precipitation(expname1,seqDate[d],logical_name)
+      field_day2[[d]] <- read_precipitation(expname2,seqDate[d],logical_name)
+    }
+
+    nx1 <- dim(field_day1[[1]])[1]; ny1 <- dim(field_day1[[1]])[2]
+    nx2 <- dim(field_day2[[1]])[1]; ny2 <- dim(field_day2[[1]])[2]
+
+    if (nx1 != nx2 || ny1 != ny2)
+      stop("Spatial dimensions differ between experiments for ",logical_name)
+
+    nt1 <- sum(sapply(field_day1,function(x) dim(x)[3]))
+    nt2 <- sum(sapply(field_day2,function(x) dim(x)[3]))
+
+    if (nt1 != nt2)
+      stop("Time dimensions differ between experiments for ",logical_name)
+
+    data1 <- array(unlist(field_day1),dim=c(nx1,ny1,nt1))
+    data2 <- array(unlist(field_day2),dim=c(nx2,ny2,nt2))
+
+    file1 <- precip_file(expname1,seqDate[1])
+    ll <- read_lon_lat(file1)
+    field_lon <- ll$lon
+    field_lat <- ll$lat
+
+    field_var1 <- apply(data1,c(1,2),mean,na.rm=TRUE)
+    field_var2 <- apply(data2,c(1,2),mean,na.rm=TRUE)
+
+    if (regional_mode) {
+      field_plot1 <- mask_region_field(field_var1,field_lon,field_lat,region_box)
+      field_plot2 <- mask_region_field(field_var2,field_lon,field_lat,region_box)
+      tmean_var1 <- regional_mean(data1,field_lon,field_lat,region_box)
+      tmean_var2 <- regional_mean(data2,field_lon,field_lat,region_box)
+    } else {
+      field_plot1 <- field_var1
+      field_plot2 <- field_var2
+      tmean_var1 <- apply(data1,3,mean,na.rm=TRUE)
+      tmean_var2 <- apply(data2,3,mean,na.rm=TRUE)
+    }
+
+    ### The eight values per forecast correspond to the intervals:
+    ### 00-03, 03-06, ..., 21-24 UTC. Associate each amount with the
+    ### beginning of its 3-hour interval to retain COMPASS's 00...21 axis.
+    nt <- dim(data1)[3]
+    tmean_tim <- seq.POSIXt(
+      from=as.POSIXct(paste0(substr(sDate,1,4),"-",substr(sDate,5,6),"-",substr(sDate,7,8)," 00:00:00"),tz="UTC"),
+      by="3 hours",length.out=nt
+    )
+
+    hour <- as.integer(format(tmean_tim,"%H"))
+    hours <- c(0,3,6,9,12,15,18,21)
+
+    dhourmean_var1 <- sapply(hours,function(h) mean(tmean_var1[hour == h],na.rm=TRUE))
+    dhourmean_var2 <- sapply(hours,function(h) mean(tmean_var2[hour == h],na.rm=TRUE))
+
+    field_breaks <- positive_breaks(c(field_plot1,field_plot2),ncolors=200)
+    field_breaks_diff <- difference_breaks(field_plot2-field_plot1,ncolors=200)
+
+    plot_dir <- paste0(path_plot,"meteorology/")
+    dir.create(plot_dir,recursive=TRUE,showWarnings=FALSE)
+
+    file_out <- paste0(
+      plot_dir,"Meteorology_",logical_name,"_vs_",logical_name,"_",
+      expname1,"-",expname2,region_file_tag,"_",sDate,"-",eDate,".png"
+    )
+
+    dpi <- 300
+    png(file_out,width=(0.2+3*3.9+0.8+0.8)*dpi,height=(0.23+0.15+2+2.5)*dpi)
+    layout(
+      mat=matrix(c(1,1,1,1,1,1,2:13,14,14,14,14,15,15),4,6,byrow=TRUE),
+      widths=c(0.2,3.9,3.9,0.8,3.9,0.8),
+      heights=c(0.23,0.15,2,2.5)
+    )
+
+    par(mai=c(0,0,0,0))
+    plot.new()
+    text(
+      0.5,0.5,
+      paste0("Experiments: ",expname1," VS ",expname2,
+             "   |   Type: ",def$title,
+             region_title,"   |   Period: ",sDate,"-",eDate),
+      col="grey50",cex=6,family="Century Gothic"
+    )
+    abline(h=c(0,1),col="grey50",lwd=3)
+
+    par(mai=c(0,0,0,0)); plot.new()
+    par(mai=c(0,0,0,0)); plot.new(); text(0.5,0.5,paste0(expname1," (",exptype1,")"),col="grey20",cex=4.5,family="Century Gothic")
+    par(mai=c(0,0,0,0)); plot.new(); text(0.5,0.5,paste0(expname2," (",exptype2,")"),col="grey20",cex=4.5,family="Century Gothic")
+    par(mai=c(0,0,0,0)); plot.new()
+    par(mai=c(0,0,0,0)); plot.new(); text(0.5,0.5,paste0(expname2," - ",expname1),col="grey20",cex=4.5,family="Century Gothic")
+    par(mai=c(0,0,0,0)); plot.new()
+
+    par(mai=c(0,0,0,0))
+    plot.new()
+    text(0.5,0.5,paste0(def$title," (3 h)"),
+         col="grey20",cex=5,family="Century Gothic",srt=90)
+
+    MapNC(
+      filename_topo="",figure_box=figure_box,field_show_box=field_show_box,
+      coastlineWorldFine_lwd=coastlineWorldFine_lwd,gridlines=gridlines,
+      projection=projection,lonmax=lonmax,lonmin=lonmin,latmax=latmax,latmin=latmin,
+      drawMapBox=regional_mode,
+      field_value=field_plot1,field_lon=field_lon,field_lat=field_lat,
+      field_pallete_name="TROPOMI_NEW",field_breaks=field_breaks,field_units="mm / 3 h",
+      field_pallete_starting_alpha=100,field_show_legend=FALSE
+    )
+
+    MapNC(
+      filename_topo="",figure_box=figure_box,field_show_box=field_show_box,
+      coastlineWorldFine_lwd=coastlineWorldFine_lwd,gridlines=gridlines,
+      projection=projection,lonmax=lonmax,lonmin=lonmin,latmax=latmax,latmin=latmin,
+      drawMapBox=regional_mode,
+      field_value=field_plot2,field_lon=field_lon,field_lat=field_lat,
+      field_pallete_name="TROPOMI_NEW",field_breaks=field_breaks,field_units="mm / 3 h",
+      field_pallete_starting_alpha=100,field_show_legend=TRUE,
+      field_legend_mai_right=1.8,field_legend_nlabels=7
+    )
+
+    MapNC(
+      filename_topo="",figure_box=figure_box,field_show_box=field_show_box,
+      coastlineWorldFine_lwd=coastlineWorldFine_lwd,gridlines=gridlines,
+      projection=projection,lonmax=lonmax,lonmin=lonmin,latmax=latmax,latmin=latmin,
+      drawMapBox=regional_mode,
+      field_value=field_plot2-field_plot1,field_lon=field_lon,field_lat=field_lat,
+      field_pallete_name="MNMB",field_breaks=field_breaks_diff,field_units="mm / 3 h",
+      field_pallete_starting_alpha=100,field_show_legend=TRUE,
+      field_legend_mai_right=1.8,field_legend_nlabels=7
+    )
+
+    ### Time series: regional/global spatial-mean 3-hour precipitation.
+    par(mai=c(2,2,0,0.4),family="Century Gothic")
+    x <- seq_along(tmean_tim)
+    yseq <- positive_axis_ticks(c(tmean_var1,tmean_var2),n=10)
+
+    plot(x,type="n",axes=FALSE,ann=FALSE,
+         ylim=c(0,max(yseq$breaks)),yaxs="i")
+
+    mtext("3-hour interval starting UTC",side=1,line=12,cex=3.5)
+    mtext("Precipitation (mm / 3 h)",side=2,line=11,cex=3.5)
+
+    IDx_labels <- which(format(tmean_tim,"%H") == "00" & format(tmean_tim,"%d") %in% c("01","05","10","15","20","25"))
+    IDx_labels <- unique(c(1,IDx_labels,length(tmean_tim)))
+
+    axis(1,at=x[IDx_labels],labels=format(tmean_tim[IDx_labels],"%Y-%m-%d"),cex.axis=4,line=4,lty=0)
+    axis(1,at=x[IDx_labels],labels=FALSE,tck=0.01)
+    axis(1,at=x[IDx_labels],labels=FALSE,tck=-0.01)
+    axis(2,at=yseq$breaks,labels=yseq$labels,las=1,cex.axis=3)
+
+    box(lwd=2)
+    abline(h=yseq$breaks,lwd=1,col="grey")
+    abline(v=x[IDx_labels],lwd=1,col="grey")
+
+    lines(x,tmean_var1,lwd=5,col="blue")
+    points(x,tmean_var1,pch=19,cex=1.5,col="blue")
+    lines(x,tmean_var2,lwd=5,col="red")
+    points(x,tmean_var2,pch=19,cex=1.5,col="red")
+    legend("top",legend=c(expname1,expname2),lwd=5,col=c("blue","red"),cex=3)
+
+    ### Diurnal cycle
+    par(mai=c(2,2,0,0.4),family="Century Gothic")
+    yseq <- positive_axis_ticks(c(dhourmean_var1,dhourmean_var2),n=10)
+
+    plot(1:8,type="n",axes=FALSE,ann=FALSE,
+         ylim=c(0,max(yseq$breaks)),yaxs="i")
+
+    mtext("3-hour interval starting UTC",side=1,line=12,cex=3.5)
+    mtext("Precipitation (mm / 3 h)",side=2,line=11,cex=3.5)
+
+    axis(1,at=1:8,labels=c("00","03","06","09","12","15","18","21"),cex.axis=4,line=4,lty=0)
+    axis(1,at=1:8,labels=FALSE,tck=0.01)
+    axis(1,at=1:8,labels=FALSE,tck=-0.01)
+    axis(2,at=yseq$breaks,labels=yseq$labels,las=1,cex.axis=3)
+
+    box(lwd=2)
+    abline(h=yseq$breaks,lwd=1,col="grey")
+    abline(v=1:8,lwd=1,col="grey")
+
+    lines(1:8,dhourmean_var1,lwd=5,col="blue")
+    points(1:8,dhourmean_var1,pch=19,cex=1.5,col="blue")
+    lines(1:8,dhourmean_var2,lwd=5,col="red")
+    points(1:8,dhourmean_var2,pch=19,cex=1.5,col="red")
+    legend("top",legend=c(expname1,expname2),lwd=5,col=c("blue","red"),cex=3)
+
+    dev.off()
+
+    file_tmp <- paste0(file_out,".tmp.png")
+    compress(file_in=file_out,file_out=file_tmp)
+    file.rename(file_tmp,file_out)
+
+    message("---> Precipitation figure: ",file_out)
+  }
+}
+
 ############################
 ### COMPOSITE DEP_* PLOTS ###
 ############################

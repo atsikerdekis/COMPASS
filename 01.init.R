@@ -122,6 +122,26 @@ get_rh_definition <- function(logical_name) {
   x
 }
 
+
+#################################
+### PRECIPITATION DEFINITIONS ###
+#################################
+### Precipitation is a meteorological surface diagnostic and is intentionally
+### kept outside the aerosol GRIB-table resolver.
+precip_definitions <- data.frame(
+  logical_name = c("precip_total","precip_convective","precip_large_scale"),
+  grib         = c("228.128","143.128","142.128"),
+  title        = c("Total precipitation","Convective precipitation","Large-scale precipitation"),
+  stringsAsFactors = FALSE
+)
+
+precip_supported <- precip_definitions$logical_name
+get_precip_definition <- function(logical_name) {
+  x <- precip_definitions[precip_definitions$logical_name == logical_name,,drop=FALSE]
+  if (nrow(x) != 1) stop("Unsupported precipitation variable: ",logical_name)
+  x
+}
+
 ######################################
 ### EXPAND COMPOSITE DEP VARIABLES ###
 ######################################
@@ -134,7 +154,17 @@ if (length(invalid_rh) > 0) {
 }
 
 rh_variables <- variables_requested[variables_requested %in% rh_supported]
-aerosol_variables_requested <- variables_requested[!variables_requested %in% rh_variables]
+
+invalid_precip <- variables_requested[startsWith(variables_requested,"precip") & !variables_requested %in% precip_supported]
+if (length(invalid_precip) > 0) {
+  stop("Unsupported precipitation variable(s): ",paste(invalid_precip,collapse=", "),
+       ". Available precipitation variables: ",paste(precip_supported,collapse=", "))
+}
+
+precip_variables <- variables_requested[variables_requested %in% precip_supported]
+
+meteorology_variables <- unique(c(rh_variables,precip_variables))
+aerosol_variables_requested <- variables_requested[!variables_requested %in% meteorology_variables]
 
 dep_fluxes <- c("ddp","sdm","wdl","wdc","ngt")
 dep_variables <- aerosol_variables_requested[startsWith(aerosol_variables_requested,"dep_")]
@@ -421,6 +451,13 @@ if (length(rh_variables) > 0) {
     paste0(x," (ML",z$model_level,", ~",z$approx_height_m," m)")
   })
   message("---> Relative humidity: ",paste(rh_info,collapse=", "))
+}
+if (length(precip_variables) > 0) {
+  precip_info <- sapply(precip_variables,function(x) {
+    z <- get_precip_definition(x)
+    paste0(x," (",z$grib,")")
+  })
+  message("---> Precipitation: ",paste(precip_info,collapse=", "))
 }
 
 if (nrow(variables_exp1) > 0) message("---> ",expname1," GRIBs: ",paste(unique(variables_exp1$grib),collapse="/"))

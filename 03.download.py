@@ -23,7 +23,9 @@ def normalize_variable_names(filename, params):
 
     result = subprocess.run(
         [CDO, "-s", "showname", filename],
-        capture_output=True, text=True, check=True
+        capture_output=True,
+        text=True,
+        check=True
     )
     current_names = result.stdout.split()
 
@@ -38,7 +40,6 @@ def normalize_variable_names(filename, params):
         )
 
     for current, expected in zip(current_names, expected_names):
-
         if current == expected:
             print(f"Variable {current} already correctly named.")
             continue
@@ -50,37 +51,34 @@ def normalize_variable_names(filename, params):
         )
 
 
-def retrieve_global(expname, expclass, day, path_data, params, steps, tag):
+def retrieve_global(expname, expclass, day, path_data, params):
 
     TEMP_DIR = "/tmp/"
     OUT_DIR = path_data + expname
-    DATA_NAME = f"CAMS_{expname}_forecast{steps.split('/')[0].zfill(2)}to{steps.split('/')[-1].zfill(2)}by03_0.7x0.7_{tag}"
+    DATA_NAME = "CAMS_" + expname + "_forecast03to24by03_0.7x0.7_precip"
 
     daystrip = day.replace("-", "")
-    mytempdir = TEMP_DIR + daystrip
 
-    if not os.path.exists(mytempdir):
-        os.makedirs(mytempdir)
     if not os.path.exists(OUT_DIR):
         os.makedirs(OUT_DIR)
 
-    myoutput = OUT_DIR + "/" + DATA_NAME + "_" + daystrip + ".nc"
+    output = OUT_DIR + "/" + DATA_NAME + "_" + daystrip + ".nc"
 
-    if os.path.isfile(myoutput):
-        print(f"File {myoutput} already exists, skipping...")
+    if os.path.isfile(output):
+        print(f"File {output} already exists, skipping...")
         return
 
-    mytempfn = TEMP_DIR + "Temp_" + DATA_NAME + "_" + daystrip + "_day_2D.nc"
-    if os.path.isfile(mytempfn):
-        os.remove(mytempfn)
+    temp = TEMP_DIR + "Temp_" + DATA_NAME + "_" + daystrip + ".nc"
+
+    if os.path.isfile(temp):
+        os.remove(temp)
 
     @retry(stop=stop_after_attempt(1))
     def retryfc():
 
-        print("Trying to download:", mytempfn)
+        print("Trying to download:", temp)
         print("Parameters:", params)
-        print("Steps:", steps)
-        print("Output tag:", tag)
+        print("Steps: 3/6/9/12/15/18/21/24")
 
         server = ECMWFService("mars")
 
@@ -90,46 +88,40 @@ def retrieve_global(expname, expclass, day, path_data, params, steps, tag):
             "expver": expname,
             "levtype": "sfc",
             "param": params,
-            "step": steps,
+            "step": "3/6/9/12/15/18/21/24",
             "stream": "oper",
             "time": "00",
             "type": "fc",
             "format": "netcdf",
             "grid": "0.7/0.7",
-        }, mytempfn)
+        }, temp)
 
         print("Apparently succeeded!")
 
     retryfc()
 
-    normalize_variable_names(mytempfn, params)
+    normalize_variable_names(temp, params)
 
     subprocess.run(
-        ["ncpdq", "-O", "-4", "-L", "1", mytempfn, myoutput],
+        ["ncpdq", "-O", "-4", "-L", "1", temp, output],
         check=True
     )
 
-    if os.path.isfile(mytempfn):
-        os.remove(mytempfn)
+    if os.path.isfile(temp):
+        os.remove(temp)
 
-    print("File output at:", myoutput)
+    print("File output at:", output)
 
 
 if __name__ == "__main__":
 
     if "-h" in sys.argv or "--help" in sys.argv:
-        print(
-            "\nUsage: python 03.download_sfc.py "
-            "EXPNAME EXPCLASS DATESTART DATEEND PATH_DATA PARAMS [STEPS] [TAG]\n"
-        )
+        print("\nUsage: python 03.download_precip.py EXPNAME EXPCLASS DATESTART DATEEND PATH_DATA PARAMS\n")
         sys.exit()
 
-    if len(sys.argv) not in (7, 8, 9):
+    if len(sys.argv) != 7:
         print("\nIncorrect number of arguments.")
-        print(
-            "Usage: python 03.download_sfc.py "
-            "EXPNAME EXPCLASS DATESTART DATEEND PATH_DATA PARAMS [STEPS] [TAG]\n"
-        )
+        print("Usage: python 03.download_precip.py EXPNAME EXPCLASS DATESTART DATEEND PATH_DATA PARAMS\n")
         sys.exit(1)
 
     expname = sys.argv[1]
@@ -139,12 +131,8 @@ if __name__ == "__main__":
     path_data = sys.argv[5]
     params = sys.argv[6]
 
-    # Backward-compatible defaults: identical to the original SFC downloader.
-    steps = sys.argv[7] if len(sys.argv) >= 8 else "0/3/6/9/12/15/18/21"
-    tag = sys.argv[8] if len(sys.argv) >= 9 else "sfc"
-
     sequenceDate = pd.date_range(startDate, endDate, freq="D")
     dateCodes = sequenceDate.strftime("%Y-%m-%d")
 
     for dateCode in dateCodes:
-        retrieve_global(expname, expclass, dateCode, path_data, params, steps, tag)
+        retrieve_global(expname, expclass, dateCode, path_data, params)

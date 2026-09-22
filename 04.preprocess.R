@@ -261,6 +261,76 @@ read_relative_humidity <- function(expname,date,logical_name) {
   relative_humidity_from_qtp(q,T,p)
 }
 
+
+#################################
+### PRECIPITATION FUNCTIONS ###
+#################################
+
+precip_file <- function(expname,date) {
+  paste0(path_data,expname,"/CAMS_",expname,
+         "_forecast03to24by03_0.7x0.7_sfc_precip_",date,".nc")
+}
+
+### Convert accumulated forecast precipitation to 3-hour amounts.
+### IFS precipitation fields are accumulated from forecast step 0.
+### The downloader retrieves steps 3,6,...,24, so:
+###   first field  = accumulation 00-03 UTC
+###   later fields = difference between consecutive accumulated steps.
+### Returned units are mm per 3-hour interval.
+read_precipitation <- function(expname,date,logical_name) {
+
+  def <- get_precip_definition(logical_name)
+  file <- precip_file(expname,date)
+
+  if (!file.exists(file))
+    stop("Precipitation file not found: ",file)
+
+  nc <- nc_open(file)
+  on.exit(nc_close(nc))
+
+  ncname <- grib_to_ncname(def$grib)
+
+  if (!ncname %in% names(nc$var))
+    stop("Precipitation variable ",ncname," for ",logical_name,
+         " not found in ",file)
+
+  accumulated <- drop(ncvar_get(nc,ncname))
+
+  if (length(dim(accumulated)) != 3)
+    stop("Unexpected precipitation dimensions in ",file,
+         ". Expected lon x lat x time. Found: ",
+         paste(dim(accumulated),collapse="x"))
+
+  nt <- dim(accumulated)[3]
+
+  if (nt != 8)
+    stop("Expected 8 precipitation forecast steps (3...24 h) in ",file,
+         ", found ",nt)
+
+  amount <- accumulated
+
+  ### Step 3 is already the 00-03 UTC accumulation.
+  amount[,,1] <- accumulated[,,1]
+
+  ### Steps 6...24 are deaccumulated against the previous forecast step.
+  for (t in 2:nt)
+    amount[,,t] <- accumulated[,,t]-accumulated[,,t-1]
+
+  ### Precipitation parameters are archived in metres of water equivalent.
+  amount <- amount*1000
+
+  ### Preserve real problems instead of silently clipping them. Only tiny
+  ### negative values caused by numerical precision are set to zero.
+  tiny_negative <- amount < 0 & amount > -1e-6
+  amount[tiny_negative] <- 0
+
+  if (any(amount < -1e-6,na.rm=TRUE))
+    warning("Negative 3-hour precipitation amounts found for ",
+            logical_name," in ",file)
+
+  amount
+}
+
 ### GRIDCELL AREA
 gridcell_area <- function(lon,lat) {
   R <- 6371000

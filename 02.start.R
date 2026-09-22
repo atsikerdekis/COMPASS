@@ -97,9 +97,17 @@ if (runtype == "download") {
         levels_ml <- paste(sort(levels_ml),collapse="/")
       }
 
+      ### Surface precipitation diagnostics
+      params_precip <- ""
+      if (length(precip_variables) > 0) {
+        params_precip <- unique(precip_definitions$grib[precip_definitions$logical_name %in% precip_variables])
+        params_precip <- paste(params_precip,collapse="/")
+      }
+
       message("---> PL parameters: ",ifelse(params_pl == "","none",params_pl))
       message("---> SFC parameters: ",ifelse(params_sfc == "","none",params_sfc))
       message("---> RH model levels: ",ifelse(levels_ml == "","none",levels_ml))
+      message("---> Precipitation parameters: ",ifelse(params_precip == "","none",params_precip))
 
       ########################
       ### SURFACE DOWNLOAD ###
@@ -113,6 +121,22 @@ if (runtype == "download") {
           PATH_program = paste0(path_PYTHON,"python"),
           PATH_script  = paste0(path_code,"03.download_sfc.py"),
           SCRIPT_flag  = paste(expname,expclass,vdate1[d],vdate2[d],path_data,params_sfc)
+        )
+
+      }
+
+      ################################
+      ### PRECIPITATION DOWNLOAD ###
+      ################################
+      if (params_precip != "") {
+
+        SubmitJob(
+          JOB_name     = paste0("download_precip_",expname,"_",vdate1[d],"_",vdate2[d]),
+          JOB_out      = paste0(path_log,"download_precip_",expname,"_",vdate1[d],"_",vdate2[d],".out"),
+          JOB_err      = paste0(path_log,"download_precip_",expname,"_",vdate1[d],"_",vdate2[d],".out"),
+          PATH_program = paste0(path_PYTHON,"python"),
+          PATH_script  = paste0(path_code,"03.download_sfc.py"),
+          SCRIPT_flag  = paste(expname,expclass,vdate1[d],vdate2[d],path_data,params_precip,"3/6/9/12/15/18/21/24","sfc_precip")
         )
 
       }

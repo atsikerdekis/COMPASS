@@ -262,6 +262,60 @@ read_relative_humidity <- function(expname,date,logical_name) {
 }
 
 
+
+##################################
+### OPTICAL PROPERTY FUNCTIONS ###
+##################################
+optics_file <- function(expname,date) {
+  paste0(path_data,expname,"/CAMS_",expname,"_forecast00to21by03_0.7x0.7_sfc_optics_",date,".nc")
+}
+mec_file <- function(expname,date) {
+  paste0(path_data,expname,"/CAMS_",expname,"_forecast00to21by03_0.7x0.7_sfc_mec_",date,".nc")
+}
+read_direct_optical <- function(expname,date,grib) {
+  file <- optics_file(expname,date)
+  if (!file.exists(file)) stop("Optics file not found: ",file)
+  nc <- nc_open(file); on.exit(nc_close(nc))
+  ncname <- grib_to_ncname(grib)
+  if (!ncname %in% names(nc$var)) stop("Optical variable ",ncname," not found in ",file)
+  drop(ncvar_get(nc,ncname))
+}
+read_total_aerosol_burden <- function(expname,date) {
+  file <- mec_file(expname,date)
+  if (!file.exists(file)) stop("MEC burden file not found: ",file)
+  nc <- nc_open(file); on.exit(nc_close(nc))
+  vars <- names(nc$var)
+  vars <- vars[grepl("^p[0-9]+$",vars)]
+  if (length(vars) == 0) stop("No aerosol burden variables found in ",file)
+  out <- NULL
+  for (v in vars) {
+    x <- ncvar_get(nc,v)
+    if (is.null(out)) out <- x else out <- out+x
+  }
+  drop(out)
+}
+read_optical_property <- function(expname,date,logical_name) {
+  if (logical_name == "aod550") return(read_direct_optical(expname,date,"207.210"))
+  if (logical_name == "aod865") return(read_direct_optical(expname,date,"215.210"))
+  if (logical_name == "aaod550") return(read_direct_optical(expname,date,"104.215"))
+  if (logical_name == "ssa550") return(read_direct_optical(expname,date,"140.215"))
+  if (logical_name == "ae550to865") {
+    a1 <- read_direct_optical(expname,date,"207.210")
+    a2 <- read_direct_optical(expname,date,"215.210")
+    out <- -log(a1/a2)/log(550/865)
+    out[!is.finite(out)] <- NA_real_
+    return(out)
+  }
+  if (logical_name == "mec550") {
+    aod <- read_direct_optical(expname,date,"207.210")
+    burden <- read_total_aerosol_burden(expname,date)
+    out <- aod/(burden*1000)  ### m2 g-1
+    out[!is.finite(out)] <- NA_real_
+    return(out)
+  }
+  stop("Unsupported optical property: ",logical_name)
+}
+
 #################################
 ### PRECIPITATION FUNCTIONS ###
 #################################

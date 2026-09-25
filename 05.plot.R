@@ -58,6 +58,7 @@ plot_type_title <- c(
 dep_fluxes <- c("ddp","sdm","wdl","wdc","ngt")
 dep_flux_colors <- c(ddp="#846040",sdm="#D78C6A",wdl="#74ACE8",wdc="#3E7DD1",ngt="#3FC13A",wdep="#8B6FB5")
 requested_individual_variables <- variables_requested[!startsWith(variables_requested,"dep_")]
+optical_plot_variables <- if (exists("optical_variables")) optical_variables else character(0)
 
 ########################
 ### HELPER FUNCTIONS ###
@@ -169,6 +170,26 @@ get_midnight_idx <- function(tt) which(format(tt,"%H") == "00")
 region_title <- if (regional_mode) paste0("   |   Region: ",region) else ""
 region_file_tag <- if (regional_mode) paste0("_",gsub("[^A-Za-z0-9_-]","_",region)) else ""
 
+region_dir <- if (regional_mode) gsub("[^A-Za-z0-9_-]","_",region) else "global"
+make_plot_dir <- function(category) {
+  out <- paste0(path_plot,category,"/",region_dir,"/")
+  dir.create(out,recursive=TRUE,showWarnings=FALSE)
+  out
+}
+compute_total_dep_flux <- function(expname,exptype,mss_logical,field_lon,field_lat,box=NULL) {
+  suffix <- get_variable_suffix(mss_logical)
+  total <- NULL
+  for (flux in dep_fluxes) {
+    nm <- paste0(flux,"_",suffix)
+    tbl <- tryCatch(resolve_variables(exptype,nm),error=function(e) data.frame())
+    if (nrow(tbl) == 0) next
+    d <- read_plot_data(expname,exptype,nm,tbl,flux)
+    ts <- if (is.null(box)) global_flux_tg_day(d$data,field_lon,field_lat) else regional_flux_tg_day(d$data,field_lon,field_lat,box)
+    if (is.null(total)) total <- ts else total <- total+ts
+  }
+  total
+}
+
 ############################
 ### LOOP DIAGNOSTIC TYPES ###
 ############################
@@ -236,6 +257,22 @@ for (type in plot_types) {
     nt <- dim(data1)[3]
     tmean_tim <- seq.POSIXt(from=as.POSIXct(paste0(substr(sDate,1,4),"-",substr(sDate,5,6),"-",substr(sDate,7,8)," 00:00:00"),tz="UTC"),by="3 hours",length.out=nt)
 
+
+dep_lifetime1 <- NULL; dep_lifetime2 <- NULL
+mean_mass1 <- mean(tmean_var1,na.rm=TRUE); mean_mass2 <- mean(tmean_var2,na.rm=TRUE)
+mean_tau1 <- NA_real_; mean_tau2 <- NA_real_
+if (type %in% c("mss","mss_from_mr")) {
+  dep1 <- if (regional_mode) compute_total_dep_flux(expname1,exptype1,variable1,field_lon,field_lat,region_box) else compute_total_dep_flux(expname1,exptype1,variable1,field_lon,field_lat,NULL)
+  dep2 <- if (regional_mode) compute_total_dep_flux(expname2,exptype2,variable2,field_lon,field_lat,region_box) else compute_total_dep_flux(expname2,exptype2,variable2,field_lon,field_lat,NULL)
+  if (!is.null(dep1) && !is.null(dep2)) {
+    dep_lifetime1 <- tmean_var1/dep1
+    dep_lifetime2 <- tmean_var2/dep2
+    dep_lifetime1[!is.finite(dep_lifetime1) | dep_lifetime1 < 0] <- NA_real_
+    dep_lifetime2[!is.finite(dep_lifetime2) | dep_lifetime2 < 0] <- NA_real_
+    mean_tau1 <- mean(dep_lifetime1,na.rm=TRUE); mean_tau2 <- mean(dep_lifetime2,na.rm=TRUE)
+  }
+}
+
     ### MASSDIA is a global diagnostic and is intentionally disabled for regional plots
     massdiag1 <- NULL
     massdiag2 <- NULL
@@ -252,8 +289,7 @@ for (type in plot_types) {
     field_breaks_diff <- difference_breaks(field_plot2-field_plot1,ncolors=200)
 
     plot_category <- get_plot_category(variable1)
-    plot_dir <- paste0(path_plot,plot_category,"/")
-    dir.create(plot_dir,recursive=TRUE,showWarnings=FALSE)
+    plot_dir <- make_plot_dir(plot_category)
     file_out <- paste0(plot_dir,gsub(" ","",plot_title),"_",variable1,"_vs_",variable2,"_",expname1,"-",expname2,region_file_tag,"_",sDate,"-",eDate,".png")
 
     dpi <- 300
@@ -290,6 +326,24 @@ for (type in plot_types) {
     axis(2,at=yseq$breaks,labels=yseq$labels,las=1,cex.axis=3)
     box(lwd=2); abline(h=yseq$breaks,lwd=1,col="grey"); abline(v=x[IDx_labels],lwd=1,col="grey")
     lines(x,tmean_var1,lwd=5,col="blue"); lines(x,tmean_var2,lwd=5,col="red")
+
+points(x,tmean_var1,pch=19,cex=1.4,col="blue"); points(x,tmean_var2,pch=19,cex=1.4,col="red")
+if (!is.null(dep_lifetime1)) {
+  tau <- c(dep_lifetime1,dep_lifetime2); tau <- tau[is.finite(tau)]
+  if (length(tau) > 0) {
+    tau_ticks <- positive_axis_ticks(tau,n=10)
+    par(new=TRUE)
+    plot(x,type="n",axes=FALSE,ann=FALSE,ylim=c(0,max(tau_ticks$breaks)),xaxs="i",yaxs="i")
+    axis(4,at=tau_ticks$breaks,labels=tau_ticks$labels,las=1,cex.axis=3)
+    mtext("Deposition lifetime (days)",side=4,line=7,cex=3.5)
+    lines(x,dep_lifetime1,lwd=4,lty=2,col="blue")
+    lines(x,dep_lifetime2,lwd=4,lty=2,col="red")
+    legend("topright",legend=c(paste0(expname1," lifetime"),paste0(expname2," lifetime")),lwd=4,lty=2,col=c("blue","red"),cex=2,bty="n")
+    usr <- par("usr")
+    text(usr[1]+0.02*(usr[2]-usr[1]),usr[4]-0.08*(usr[4]-usr[3]),paste0(expname1,": mean MSS=",formatC(mean_mass1,digits=2,format="f")," Tg | mean lifetime=",formatC(mean_tau1,digits=2,format="f")," d"),adj=c(0,1),cex=1.7,col="blue")
+    text(usr[1]+0.02*(usr[2]-usr[1]),usr[4]-0.16*(usr[4]-usr[3]),paste0(expname2,": mean MSS=",formatC(mean_mass2,digits=2,format="f")," Tg | mean lifetime=",formatC(mean_tau2,digits=2,format="f")," d"),adj=c(0,1),cex=1.7,col="red")
+  }
+}
 
     if (!is.null(massdiag1)) {
       massdiag_x1 <- as.numeric(difftime(massdiag1$time,tmean_tim[1],units="hours"))/3 + 1
@@ -402,8 +456,7 @@ if (length(rh_variables) > 0) {
     field_breaks <- seq(0,100,length.out=201)
     field_breaks_diff <- difference_breaks(field_plot2-field_plot1,ncolors=200)
 
-    plot_dir <- paste0(path_plot,"meteorology/")
-    dir.create(plot_dir,recursive=TRUE,showWarnings=FALSE)
+    plot_dir <- make_plot_dir("meteorology")
 
     file_out <- paste0(
       plot_dir,"Meteorology_",logical_name,"_vs_",logical_name,"_",
@@ -529,6 +582,48 @@ if (length(rh_variables) > 0) {
 }
 
 
+
+############################
+### OPTICAL PROPERTY PLOTS ###
+############################
+if (length(optical_plot_variables) > 0) {
+  for (logical_name in optical_plot_variables) {
+    message("---> Plotting ",logical_name,if (regional_mode) paste0(" for ",region) else "")
+    d1 <- list(); d2 <- list()
+    for (d in seq_along(seqDate)) {
+      d1[[d]] <- read_optical_property(expname1,seqDate[d],logical_name)
+      d2[[d]] <- read_optical_property(expname2,seqDate[d],logical_name)
+    }
+    nx <- dim(d1[[1]])[1]; ny <- dim(d1[[1]])[2]
+    nt <- sum(sapply(d1,function(x) dim(x)[3]))
+    data1 <- array(unlist(d1),dim=c(nx,ny,nt)); data2 <- array(unlist(d2),dim=c(nx,ny,nt))
+    ll <- read_lon_lat(optics_file(expname1,seqDate[1])); field_lon <- ll$lon; field_lat <- ll$lat
+    f1 <- apply(data1,c(1,2),mean,na.rm=TRUE); f2 <- apply(data2,c(1,2),mean,na.rm=TRUE)
+    if (regional_mode) {
+      fp1 <- mask_region_field(f1,field_lon,field_lat,region_box); fp2 <- mask_region_field(f2,field_lon,field_lat,region_box)
+      ts1 <- regional_mean(data1,field_lon,field_lat,region_box); ts2 <- regional_mean(data2,field_lon,field_lat,region_box)
+    } else { fp1 <- f1; fp2 <- f2; ts1 <- apply(data1,3,mean,na.rm=TRUE); ts2 <- apply(data2,3,mean,na.rm=TRUE) }
+    tt <- seq.POSIXt(from=as.POSIXct(paste0(substr(sDate,1,4),"-",substr(sDate,5,6),"-",substr(sDate,7,8)," 00:00:00"),tz="UTC"),by="3 hours",length.out=nt)
+    hr <- as.integer(format(tt,"%H")); hrs <- c(0,3,6,9,12,15,18,21)
+    dc1 <- sapply(hrs,function(h) mean(ts1[hr==h],na.rm=TRUE)); dc2 <- sapply(hrs,function(h) mean(ts2[hr==h],na.rm=TRUE))
+    br <- positive_breaks(c(fp1,fp2),200); brd <- difference_breaks(fp2-fp1,200)
+    units <- if (logical_name=="mec550") "m2 g^-1" else " "
+    plot_dir <- make_plot_dir("optics")
+    file_out <- paste0(plot_dir,"Optics_",logical_name,"_",expname1,"-",expname2,region_file_tag,"_",sDate,"-",eDate,".png")
+    dpi <- 300; png(file_out,width=(0.2+3*3.9+0.8+0.8)*dpi,height=(0.23+0.15+2+2.5)*dpi)
+    layout(mat=matrix(c(1,1,1,1,1,1,2:13,14,14,14,14,15,15),4,6,byrow=TRUE),widths=c(0.2,3.9,3.9,0.8,3.9,0.8),heights=c(0.23,0.15,2,2.5))
+    par(mai=c(0,0,0,0)); plot.new(); text(0.5,0.5,paste0("Experiments: ",expname1," VS ",expname2,"   |   Type: ",get_optical_definition(logical_name)$title,region_title,"   |   Period: ",sDate,"-",eDate),col="grey50",cex=6,family="Century Gothic"); abline(h=c(0,1),col="grey50",lwd=3)
+    par(mai=c(0,0,0,0)); plot.new(); par(mai=c(0,0,0,0)); plot.new(); text(.5,.5,paste0(expname1," (",exptype1,")"),cex=4.5,family="Century Gothic")
+    par(mai=c(0,0,0,0)); plot.new(); text(.5,.5,paste0(expname2," (",exptype2,")"),cex=4.5,family="Century Gothic"); par(mai=c(0,0,0,0)); plot.new(); par(mai=c(0,0,0,0)); plot.new(); text(.5,.5,paste0(expname2," - ",expname1),cex=4.5,family="Century Gothic"); par(mai=c(0,0,0,0)); plot.new(); par(mai=c(0,0,0,0)); plot.new(); text(.5,.5,get_optical_definition(logical_name)$title,cex=5,family="Century Gothic",srt=90)
+    MapNC(filename_topo="",figure_box=figure_box,field_show_box=field_show_box,coastlineWorldFine_lwd=coastlineWorldFine_lwd,gridlines=gridlines,projection=projection,lonmax=lonmax,lonmin=lonmin,latmax=latmax,latmin=latmin,drawMapBox=regional_mode,field_value=fp1,field_lon=field_lon,field_lat=field_lat,field_pallete_name="TROPOMI_NEW",field_breaks=br,field_units=units,field_pallete_starting_alpha=100,field_show_legend=FALSE)
+    MapNC(filename_topo="",figure_box=figure_box,field_show_box=field_show_box,coastlineWorldFine_lwd=coastlineWorldFine_lwd,gridlines=gridlines,projection=projection,lonmax=lonmax,lonmin=lonmin,latmax=latmax,latmin=latmin,drawMapBox=regional_mode,field_value=fp2,field_lon=field_lon,field_lat=field_lat,field_pallete_name="TROPOMI_NEW",field_breaks=br,field_units=units,field_pallete_starting_alpha=100,field_show_legend=TRUE,field_legend_mai_right=1.8,field_legend_nlabels=7)
+    MapNC(filename_topo="",figure_box=figure_box,field_show_box=field_show_box,coastlineWorldFine_lwd=coastlineWorldFine_lwd,gridlines=gridlines,projection=projection,lonmax=lonmax,lonmin=lonmin,latmax=latmax,latmin=latmin,drawMapBox=regional_mode,field_value=fp2-fp1,field_lon=field_lon,field_lat=field_lat,field_pallete_name="MNMB",field_breaks=brd,field_units=units,field_pallete_starting_alpha=100,field_show_legend=TRUE,field_legend_mai_right=1.8,field_legend_nlabels=7)
+    par(mai=c(2,2,0,.4),family="Century Gothic"); x <- seq_along(tt); yt <- axis_ticks(c(ts1,ts2),10); plot(x,type="n",axes=FALSE,ann=FALSE,ylim=range(yt$breaks),yaxs="i"); mtext("Time",1,12,cex=3.5); mtext(get_optical_definition(logical_name)$title,2,11,cex=3.5); idx <- unique(c(1,which(format(tt,"%H")=="00" & format(tt,"%d") %in% c("01","05","10","15","20","25")),length(tt))); axis(1,at=x[idx],labels=format(tt[idx],"%Y-%m-%d"),cex.axis=4,line=4,lty=0); axis(2,at=yt$breaks,labels=yt$labels,las=1,cex.axis=3); box(); abline(h=yt$breaks,col="grey"); lines(x,ts1,lwd=5,col="blue"); points(x,ts1,pch=19,cex=1.4,col="blue"); lines(x,ts2,lwd=5,col="red"); points(x,ts2,pch=19,cex=1.4,col="red"); legend("top",c(expname1,expname2),lwd=5,col=c("blue","red"),cex=3)
+    par(mai=c(2,2,0,.4),family="Century Gothic"); yd <- axis_ticks(c(dc1,dc2),10); plot(1:8,type="n",axes=FALSE,ann=FALSE,ylim=range(yd$breaks),yaxs="i"); mtext("Time (3 hourly UTC)",1,12,cex=3.5); axis(1,at=1:8,labels=sprintf("%02d",hrs),cex.axis=4,line=4,lty=0); axis(2,at=yd$breaks,labels=yd$labels,las=1,cex.axis=3); box(); abline(h=yd$breaks,col="grey"); lines(1:8,dc1,lwd=5,col="blue"); points(1:8,dc1,pch=19,cex=1.4,col="blue"); lines(1:8,dc2,lwd=5,col="red"); points(1:8,dc2,pch=19,cex=1.4,col="red"); legend("top",c(expname1,expname2),lwd=5,col=c("blue","red"),cex=3)
+    dev.off(); tmp <- paste0(file_out,".tmp.png"); compress(file_in=file_out,file_out=tmp); file.rename(tmp,file_out)
+  }
+}
+
 #########################
 ### PRECIPITATION PLOTS ###
 #########################
@@ -602,8 +697,7 @@ if (length(precip_variables) > 0) {
     field_breaks <- positive_breaks(c(field_plot1,field_plot2),ncolors=200)
     field_breaks_diff <- difference_breaks(field_plot2-field_plot1,ncolors=200)
 
-    plot_dir <- paste0(path_plot,"meteorology/")
-    dir.create(plot_dir,recursive=TRUE,showWarnings=FALSE)
+    plot_dir <- make_plot_dir("meteorology")
 
     file_out <- paste0(
       plot_dir,"Meteorology_",logical_name,"_vs_",logical_name,"_",
@@ -823,8 +917,7 @@ if (length(dep_variables) > 0) {
     }
 
     plot_category <- get_plot_category(dep_name)
-    plot_dir <- paste0(path_plot,plot_category,"/")
-    dir.create(plot_dir,recursive=TRUE,showWarnings=FALSE)
+    plot_dir <- make_plot_dir(plot_category)
     file_out <- paste0(plot_dir,gsub(" ","",plot_title),"_",dep_name,"_",expname1,"-",expname2,region_file_tag,"_",sDate,"-",eDate,".png")
 
     nflux <- length(available_fluxes)

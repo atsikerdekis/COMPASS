@@ -104,10 +104,37 @@ if (runtype == "download") {
         params_precip <- paste(params_precip,collapse="/")
       }
 
+
+### Optical-property diagnostics
+params_optics <- ""
+if (length(optical_variables) > 0) {
+  params_optics <- paste(get_optical_required_gribs(optical_variables),collapse="/")
+}
+
+### MEC needs total aerosol column burden. Use all available mss GRIBs.
+params_mec <- ""
+if ("mec550" %in% optical_variables) {
+  params_mec <- unique(expvars$grib[expvars$grib_column == "gribmss"])
+  params_mec <- params_mec[!is.na(params_mec) & params_mec != ""]
+  ### If no MSS variable was explicitly requested, resolve the full aerosol burden.
+  if (length(params_mec) == 0) {
+    mec_names <- paste0("mss_",c("ss","du","pom","bc","so4","ni","am","soa"))
+    mec_table <- data.frame()
+    for (nm in mec_names) {
+      tmp <- tryCatch(resolve_variables(exptype,nm),error=function(e) data.frame())
+      if (nrow(tmp) > 0) mec_table <- rbind(mec_table,tmp)
+    }
+    if (nrow(mec_table) > 0) params_mec <- unique(mec_table$grib[mec_table$grib_column == "gribmss"])
+  }
+  params_mec <- paste(params_mec,collapse="/")
+}
+
       message("---> PL parameters: ",ifelse(params_pl == "","none",params_pl))
       message("---> SFC parameters: ",ifelse(params_sfc == "","none",params_sfc))
       message("---> RH model levels: ",ifelse(levels_ml == "","none",levels_ml))
       message("---> Precipitation parameters: ",ifelse(params_precip == "","none",params_precip))
+      message("---> Optical parameters: ",ifelse(params_optics == "","none",params_optics))
+      message("---> MEC burden parameters: ",ifelse(params_mec == "","none",params_mec))
 
       ########################
       ### SURFACE DOWNLOAD ###
@@ -140,6 +167,35 @@ if (runtype == "download") {
         )
 
       }
+
+
+############################
+### OPTICAL DOWNLOAD ###
+############################
+if (params_optics != "") {
+  SubmitJob(
+    JOB_name     = paste0("download_optics_",expname,"_",vdate1[d],"_",vdate2[d]),
+    JOB_out      = paste0(path_log,"download_optics_",expname,"_",vdate1[d],"_",vdate2[d],".out"),
+    JOB_err      = paste0(path_log,"download_optics_",expname,"_",vdate1[d],"_",vdate2[d],".out"),
+    PATH_program = paste0(path_PYTHON,"python"),
+    PATH_script  = paste0(path_code,"03.download_sfc.py"),
+    SCRIPT_flag  = paste(expname,expclass,vdate1[d],vdate2[d],path_data,params_optics,"0/3/6/9/12/15/18/21","sfc_optics")
+  )
+}
+
+############################
+### MEC BURDEN DOWNLOAD ###
+############################
+if (params_mec != "") {
+  SubmitJob(
+    JOB_name     = paste0("download_mec_",expname,"_",vdate1[d],"_",vdate2[d]),
+    JOB_out      = paste0(path_log,"download_mec_",expname,"_",vdate1[d],"_",vdate2[d],".out"),
+    JOB_err      = paste0(path_log,"download_mec_",expname,"_",vdate1[d],"_",vdate2[d],".out"),
+    PATH_program = paste0(path_PYTHON,"python"),
+    PATH_script  = paste0(path_code,"03.download_sfc.py"),
+    SCRIPT_flag  = paste(expname,expclass,vdate1[d],vdate2[d],path_data,params_mec,"0/3/6/9/12/15/18/21","sfc_mec")
+  )
+}
 
       ###############################
       ### PRESSURE LEVEL DOWNLOAD ###

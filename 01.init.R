@@ -142,6 +142,30 @@ get_precip_definition <- function(logical_name) {
   x
 }
 
+
+##########################
+### OPTICAL DEFINITIONS ###
+##########################
+optical_definitions <- data.frame(
+  logical_name = c("aod550","aod865","ae550to865","aaod550","ssa550","mec550"),
+  title        = c("Aerosol optical depth @ 550 nm","Aerosol optical depth @ 865 nm","Angstrom exponent 550-865 nm","Absorption aerosol optical depth @ 550 nm","Single-scattering albedo @ 550 nm","Mass extinction coefficient @ 550 nm"),
+  stringsAsFactors = FALSE
+)
+optical_supported <- optical_definitions$logical_name
+get_optical_definition <- function(logical_name) {
+  x <- optical_definitions[optical_definitions$logical_name == logical_name,,drop=FALSE]
+  if (nrow(x) != 1) stop("Unsupported optical variable: ",logical_name)
+  x
+}
+get_optical_required_gribs <- function(logical_names) {
+  gribs <- character(0)
+  if (any(logical_names %in% c("aod550","ae550to865","mec550"))) gribs <- c(gribs,"207.210")
+  if (any(logical_names %in% c("aod865","ae550to865"))) gribs <- c(gribs,"215.210")
+  if (any(logical_names %in% "aaod550")) gribs <- c(gribs,"104.215")
+  if (any(logical_names %in% "ssa550")) gribs <- c(gribs,"140.215")
+  unique(gribs)
+}
+
 ######################################
 ### EXPAND COMPOSITE DEP VARIABLES ###
 ######################################
@@ -162,9 +186,10 @@ if (length(invalid_precip) > 0) {
 }
 
 precip_variables <- variables_requested[variables_requested %in% precip_supported]
+optical_variables <- variables_requested[variables_requested %in% optical_supported]
 
-meteorology_variables <- unique(c(rh_variables,precip_variables))
-aerosol_variables_requested <- variables_requested[!variables_requested %in% meteorology_variables]
+special_variables <- unique(c(rh_variables,precip_variables,optical_variables))
+aerosol_variables_requested <- variables_requested[!variables_requested %in% special_variables]
 
 dep_fluxes <- c("ddp","sdm","wdl","wdc","ngt")
 dep_variables <- aerosol_variables_requested[startsWith(aerosol_variables_requested,"dep_")]
@@ -458,6 +483,9 @@ if (length(precip_variables) > 0) {
     paste0(x," (",z$grib,")")
   })
   message("---> Precipitation: ",paste(precip_info,collapse=", "))
+}
+if (length(optical_variables) > 0) {
+  message("---> Optical properties: ",paste(optical_variables,collapse=", "))
 }
 
 if (nrow(variables_exp1) > 0) message("---> ",expname1," GRIBs: ",paste(unique(variables_exp1$grib),collapse="/"))

@@ -2,6 +2,43 @@
 ### PREPROCESS FUNCTIONS ###
 ############################
 
+
+### Aggregate a one-dimensional time series for plotting.
+### Maps are intentionally unaffected by these modifiers.
+aggregate_time_series <- function(values,times,aggregation="3hourly") {
+
+  if (aggregation == "3hourly")
+    return(list(time=times,value=values))
+
+  if (aggregation == "daily") {
+    key <- format(times,"%Y-%m-%d")
+    out <- tapply(values,key,mean,na.rm=TRUE)
+    tt <- as.POSIXct(paste0(names(out)," 12:00:00"),tz="UTC")
+    return(list(time=tt,value=as.numeric(out)))
+  }
+
+  if (aggregation == "monthly") {
+    key <- format(times,"%Y-%m")
+    out <- tapply(values,key,mean,na.rm=TRUE)
+    tt <- as.POSIXct(paste0(names(out),"-15 12:00:00"),tz="UTC")
+    return(list(time=tt,value=as.numeric(out)))
+  }
+
+  stop("Unsupported time aggregation: ",aggregation)
+}
+
+aggregate_pair_for_plot <- function(values1,values2,times,logical_name) {
+  aggregation <- get_time_aggregation(logical_name)[1]
+  a1 <- aggregate_time_series(values1,times,aggregation)
+  a2 <- aggregate_time_series(values2,times,aggregation)
+  list(
+    time=a1$time,
+    value1=a1$value,
+    value2=a2$value,
+    aggregation=aggregation
+  )
+}
+
 ### Return the NetCDF variable name produced by MARS for a GRIB code
 grib_to_ncname <- function(grib) {
   x <- strsplit(grib,"\\.")[[1]]
@@ -295,6 +332,7 @@ read_total_aerosol_burden <- function(expname,date) {
   drop(out)
 }
 read_optical_property <- function(expname,date,logical_name) {
+  logical_name <- strip_time_aggregation(logical_name)
   if (logical_name == "aod550") return(read_direct_optical(expname,date,"207.210"))
   if (logical_name == "aod865") return(read_direct_optical(expname,date,"215.210"))
   if (logical_name == "aaod550") return(read_direct_optical(expname,date,"104.215"))
@@ -314,6 +352,111 @@ read_optical_property <- function(expname,date,logical_name) {
     return(out)
   }
   stop("Unsupported optical property: ",logical_name)
+}
+
+
+
+### Representative period-mean maps for ratio-derived optical properties.
+### Average physical components first, then calculate the ratio/transform.
+read_period_optical_map <- function(expname,dates,logical_name) {
+
+  logical_name <- strip_time_aggregation(logical_name)
+
+  stack_fields <- function(field_list) {
+    nx <- dim(field_list[[1]])[1]
+    ny <- dim(field_list[[1]])[2]
+    nt <- sum(sapply(field_list,function(x) dim(x)[3]))
+    array(unlist(field_list),dim=c(nx,ny,nt))
+  }
+
+  if (logical_name == "ae550to865") {
+
+    aod550 <- stack_fields(
+      lapply(dates,function(d) read_direct_optical(expname,d,"207.210"))
+    )
+    aod865 <- stack_fields(
+      lapply(dates,function(d) read_direct_optical(expname,d,"215.210"))
+    )
+
+    mean550 <- apply(aod550,c(1,2),mean,na.rm=TRUE)
+    mean865 <- apply(aod865,c(1,2),mean,na.rm=TRUE)
+
+    out <- -log(mean550/mean865)/log(550/865)
+    out[!is.finite(out)] <- NA_real_
+    return(out)
+  }
+
+  if (logical_name == "ssa550") {
+
+    aod <- stack_fields(
+      lapply(dates,function(d) read_direct_optical(expname,d,"207.210"))
+    )
+    aaod <- stack_fields(
+      lapply(dates,function(d) read_direct_optical(expname,d,"104.215"))
+    )
+
+    mean_aod <- apply(aod,c(1,2),mean,na.rm=TRUE)
+    mean_aaod <- apply(aaod,c(1,2),mean,na.rm=TRUE)
+
+    out <- 1-mean_aaod/mean_aod
+    out[!is.finite(out) | out < 0 | out > 1] <- NA_real_
+    return(out)
+  }
+
+  if (logical_name == "mec550") {
+
+    aod <- stack_fields(
+      lapply(dates,function(d) read_direct_optical(expname,d,"207.210"))
+    )
+    burden <- stack_fields(
+      lapply(dates,function(d) read_total_aerosol_burden(expname,d))
+    )
+
+    mean_aod <- apply(aod,c(1,2),mean,na.rm=TRUE)
+    mean_burden <- apply(burden,c(1,2),mean,na.rm=TRUE)
+
+    ### burden is kg m^-2; convert to g m^-2 for m2 g^-1.
+    out <- mean_aod/(mean_burden*1000)
+    out[!is.finite(out) | out < 0] <- NA_real_
+    return(out)
+  }
+
+  NULL
+}
+
+################################
+### TOTAL-COLUMN GAS FUNCTIONS ###
+################################
+column_file <- function(expname,date) {
+  paste0(path_data,expname,"/CAMS_",expname,
+         "_forecast00to21by03_0.7x0.7_sfc_columns_",date,".nc")
+}
+
+read_total_column <- function(expname,date,logical_name) {
+
+  def <- get_column_definition(logical_name)
+  file <- column_file(expname,date)
+
+  if (!file.exists(file))
+    stop("Total-column file not found: ",file)
+
+  nc <- nc_open(file)
+  on.exit(nc_close(nc))
+
+  ncname <- grib_to_ncname(def$grib)
+
+  if (!ncname %in% names(nc$var))
+    stop("Total-column variable ",ncname," for ",logical_name,
+         " not found in ",file)
+
+  field <- drop(ncvar_get(nc,ncname))
+
+  if (length(dim(field)) != 3)
+    stop("Unexpected total-column dimensions in ",file,
+         ". Expected lon x lat x time. Found: ",
+         paste(dim(field),collapse="x"))
+
+  field
 }
 
 #################################

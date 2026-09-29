@@ -117,6 +117,7 @@ rh_definitions <- data.frame(
 
 rh_supported <- rh_definitions$logical_name
 get_rh_definition <- function(logical_name) {
+  logical_name <- strip_time_aggregation(logical_name)
   x <- rh_definitions[rh_definitions$logical_name == logical_name,,drop=FALSE]
   if (nrow(x) != 1) stop("Unsupported RH variable: ",logical_name)
   x
@@ -137,6 +138,7 @@ precip_definitions <- data.frame(
 
 precip_supported <- precip_definitions$logical_name
 get_precip_definition <- function(logical_name) {
+  logical_name <- strip_time_aggregation(logical_name)
   x <- precip_definitions[precip_definitions$logical_name == logical_name,,drop=FALSE]
   if (nrow(x) != 1) stop("Unsupported precipitation variable: ",logical_name)
   x
@@ -153,56 +155,137 @@ optical_definitions <- data.frame(
 )
 optical_supported <- optical_definitions$logical_name
 get_optical_definition <- function(logical_name) {
+  logical_name <- strip_time_aggregation(logical_name)
   x <- optical_definitions[optical_definitions$logical_name == logical_name,,drop=FALSE]
   if (nrow(x) != 1) stop("Unsupported optical variable: ",logical_name)
   x
 }
 get_optical_required_gribs <- function(logical_names) {
+  logical_names <- strip_time_aggregation(logical_names)
   gribs <- character(0)
-  if (any(logical_names %in% c("aod550","ae550to865","mec550"))) gribs <- c(gribs,"207.210")
-  if (any(logical_names %in% c("aod865","ae550to865"))) gribs <- c(gribs,"215.210")
-  if (any(logical_names %in% "aaod550")) gribs <- c(gribs,"104.215")
-  if (any(logical_names %in% "ssa550")) gribs <- c(gribs,"140.215")
+
+  ### AOD550 is also needed for representative SSA and MEC maps.
+  if (any(logical_names %in% c("aod550","ae550to865","ssa550","mec550")))
+    gribs <- c(gribs,"207.210")
+
+  if (any(logical_names %in% c("aod865","ae550to865")))
+    gribs <- c(gribs,"215.210")
+
+  ### AAOD550 is needed for representative SSA maps.
+  if (any(logical_names %in% c("aaod550","ssa550")))
+    gribs <- c(gribs,"104.215")
+
+  ### Keep direct SSA for native time series and diurnal cycle.
+  if (any(logical_names %in% "ssa550"))
+    gribs <- c(gribs,"140.215")
+
   unique(gribs)
+}
+
+
+################################
+### TOTAL-COLUMN DEFINITIONS ###
+################################
+### Gas total-column diagnostics archived on the surface stream.
+column_definitions <- data.frame(
+  logical_name = c("mss_hno3","mss_nh3"),
+  grib         = c("6.218","19.218"),
+  title        = c("Total column Nitric Acid (HNO3)",
+                   "Total column Ammonia (NH3)"),
+  units        = c("kg m^-2","kg m^-2"),
+  stringsAsFactors = FALSE
+)
+
+column_supported <- column_definitions$logical_name
+
+get_column_definition <- function(logical_name) {
+  logical_name <- strip_time_aggregation(logical_name)
+  x <- column_definitions[column_definitions$logical_name == logical_name,,drop=FALSE]
+  if (nrow(x) != 1) stop("Unsupported total-column variable: ",logical_name)
+  x
+}
+
+
+##################################
+### TIME-RESOLUTION MODIFIERS ###
+##################################
+### These suffixes change only the plotted time-series resolution.
+### Spatial maps continue to use all native 3-hourly fields.
+strip_time_aggregation <- function(x) {
+  sub("_(daily|monthly)$","",x)
+}
+
+get_time_aggregation <- function(x) {
+  out <- rep("3hourly",length(x))
+  out[grepl("_daily$",x)] <- "daily"
+  out[grepl("_monthly$",x)] <- "monthly"
+  out
 }
 
 ######################################
 ### EXPAND COMPOSITE DEP VARIABLES ###
 ######################################
 variables_requested <- variables
+variable_bases <- strip_time_aggregation(variables_requested)
 
-invalid_rh <- variables_requested[startsWith(variables_requested,"rh") & !variables_requested %in% rh_supported]
+invalid_rh <- variables_requested[
+  startsWith(variable_bases,"rh") & !variable_bases %in% rh_supported
+]
 if (length(invalid_rh) > 0) {
   stop("Unsupported RH variable(s): ",paste(invalid_rh,collapse=", "),
        ". Available RH variables: ",paste(rh_supported,collapse=", "))
 }
 
-rh_variables <- variables_requested[variables_requested %in% rh_supported]
+rh_variables <- variables_requested[variable_bases %in% rh_supported]
 
-invalid_precip <- variables_requested[startsWith(variables_requested,"precip") & !variables_requested %in% precip_supported]
+invalid_precip <- variables_requested[
+  startsWith(variable_bases,"precip") & !variable_bases %in% precip_supported
+]
 if (length(invalid_precip) > 0) {
   stop("Unsupported precipitation variable(s): ",paste(invalid_precip,collapse=", "),
        ". Available precipitation variables: ",paste(precip_supported,collapse=", "))
 }
 
-precip_variables <- variables_requested[variables_requested %in% precip_supported]
-optical_variables <- variables_requested[variables_requested %in% optical_supported]
+precip_variables <- variables_requested[variable_bases %in% precip_supported]
+optical_variables <- variables_requested[variable_bases %in% optical_supported]
+column_variables <- variables_requested[variable_bases %in% column_supported]
 
-special_variables <- unique(c(rh_variables,precip_variables,optical_variables))
+### Standalone deposition-lifetime diagnostics.
+### Example: lifetime_ni_as, lifetime_ni, lifetime_as.
+lifetime_variables <- variables_requested[startsWith(variable_bases,"lifetime_")]
+
+special_variables <- unique(c(
+  rh_variables,precip_variables,optical_variables,column_variables,lifetime_variables
+))
 aerosol_variables_requested <- variables_requested[!variables_requested %in% special_variables]
 
 dep_fluxes <- c("ddp","sdm","wdl","wdc","ngt")
-dep_variables <- aerosol_variables_requested[startsWith(aerosol_variables_requested,"dep_")]
+dep_variables <- aerosol_variables_requested[
+  startsWith(strip_time_aggregation(aerosol_variables_requested),"dep_")
+]
 
 expand_dep_variable <- function(x) {
-  suffix <- sub("^dep_","",x)
+  suffix <- sub("^dep_","",strip_time_aggregation(x))
   paste0(dep_fluxes,"_",suffix)
 }
 
-variables_for_resolution <- aerosol_variables_requested[!startsWith(aerosol_variables_requested,"dep_")]
+expand_lifetime_variable <- function(x) {
+  suffix <- sub("^lifetime_","",strip_time_aggregation(x))
+  c(paste0("mss_",suffix),paste0(dep_fluxes,"_",suffix))
+}
+
+variables_for_resolution <- aerosol_variables_requested[
+  !startsWith(strip_time_aggregation(aerosol_variables_requested),"dep_")
+]
 
 if (length(dep_variables) > 0) {
-  for (x in dep_variables) variables_for_resolution <- c(variables_for_resolution,expand_dep_variable(x))
+  for (x in dep_variables)
+    variables_for_resolution <- c(variables_for_resolution,expand_dep_variable(x))
+}
+
+if (length(lifetime_variables) > 0) {
+  for (x in lifetime_variables)
+    variables_for_resolution <- c(variables_for_resolution,expand_lifetime_variable(x))
 }
 
 variables_for_resolution <- unique(variables_for_resolution)
@@ -238,11 +321,13 @@ make_result <- function(logical_name,idx,grib_column,table) {
 ### HELPERS ###
 ###############
 get_variable_prefix <- function(logical_name) {
+  logical_name <- strip_time_aggregation(logical_name)
   if (startsWith(logical_name,"mss_from_mr_")) return("mss_from_mr")
   sub("_.*$","",logical_name)
 }
 
 get_variable_suffix <- function(logical_name) {
+  logical_name <- strip_time_aggregation(logical_name)
   if (startsWith(logical_name,"mss_from_mr_")) return(sub("^mss_from_mr_","",logical_name))
   sub("^[^_]+_","",logical_name)
 }
@@ -486,6 +571,16 @@ if (length(precip_variables) > 0) {
 }
 if (length(optical_variables) > 0) {
   message("---> Optical properties: ",paste(optical_variables,collapse=", "))
+}
+if (length(column_variables) > 0) {
+  column_info <- sapply(column_variables,function(x) {
+    z <- get_column_definition(x)
+    paste0(x," (",z$grib,")")
+  })
+  message("---> Total-column gases: ",paste(column_info,collapse=", "))
+}
+if (length(lifetime_variables) > 0) {
+  message("---> Deposition lifetime: ",paste(lifetime_variables,collapse=", "))
 }
 
 if (nrow(variables_exp1) > 0) message("---> ",expname1," GRIBs: ",paste(unique(variables_exp1$grib),collapse="/"))

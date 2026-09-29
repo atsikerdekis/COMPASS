@@ -93,14 +93,14 @@ if (runtype == "download") {
       ### Model levels required for derived RH diagnostics
       levels_ml <- ""
       if (length(rh_variables) > 0) {
-        levels_ml <- unique(rh_definitions$model_level[rh_definitions$logical_name %in% rh_variables])
+        levels_ml <- unique(sapply(rh_variables,function(x) get_rh_definition(x)$model_level))
         levels_ml <- paste(sort(levels_ml),collapse="/")
       }
 
       ### Surface precipitation diagnostics
       params_precip <- ""
       if (length(precip_variables) > 0) {
-        params_precip <- unique(precip_definitions$grib[precip_definitions$logical_name %in% precip_variables])
+        params_precip <- unique(sapply(precip_variables,function(x) get_precip_definition(x)$grib))
         params_precip <- paste(params_precip,collapse="/")
       }
 
@@ -111,9 +111,17 @@ if (length(optical_variables) > 0) {
   params_optics <- paste(get_optical_required_gribs(optical_variables),collapse="/")
 }
 
+
+### Surface total-column gas diagnostics
+params_columns <- ""
+if (length(column_variables) > 0) {
+  params_columns <- unique(sapply(column_variables,function(x) get_column_definition(x)$grib))
+  params_columns <- paste(params_columns,collapse="/")
+}
+
 ### MEC needs total aerosol column burden. Use all available mss GRIBs.
 params_mec <- ""
-if ("mec550" %in% optical_variables) {
+if ("mec550" %in% strip_time_aggregation(optical_variables)) {
   params_mec <- unique(expvars$grib[expvars$grib_column == "gribmss"])
   params_mec <- params_mec[!is.na(params_mec) & params_mec != ""]
   ### If no MSS variable was explicitly requested, resolve the full aerosol burden.
@@ -135,6 +143,7 @@ if ("mec550" %in% optical_variables) {
       message("---> Precipitation parameters: ",ifelse(params_precip == "","none",params_precip))
       message("---> Optical parameters: ",ifelse(params_optics == "","none",params_optics))
       message("---> MEC burden parameters: ",ifelse(params_mec == "","none",params_mec))
+      message("---> Total-column parameters: ",ifelse(params_columns == "","none",params_columns))
 
       ########################
       ### SURFACE DOWNLOAD ###
@@ -194,6 +203,21 @@ if (params_mec != "") {
     PATH_program = paste0(path_PYTHON,"python"),
     PATH_script  = paste0(path_code,"03.download_sfc.py"),
     SCRIPT_flag  = paste(expname,expclass,vdate1[d],vdate2[d],path_data,params_mec,"0/3/6/9/12/15/18/21","sfc_mec")
+  )
+}
+
+
+################################
+### TOTAL-COLUMN GAS DOWNLOAD ###
+################################
+if (params_columns != "") {
+  SubmitJob(
+    JOB_name     = paste0("download_columns_",expname,"_",vdate1[d],"_",vdate2[d]),
+    JOB_out      = paste0(path_log,"download_columns_",expname,"_",vdate1[d],"_",vdate2[d],".out"),
+    JOB_err      = paste0(path_log,"download_columns_",expname,"_",vdate1[d],"_",vdate2[d],".out"),
+    PATH_program = paste0(path_PYTHON,"python"),
+    PATH_script  = paste0(path_code,"03.download_sfc.py"),
+    SCRIPT_flag  = paste(expname,expclass,vdate1[d],vdate2[d],path_data,params_columns,"0/3/6/9/12/15/18/21","sfc_columns")
   )
 }
 

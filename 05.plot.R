@@ -59,6 +59,7 @@ dep_fluxes <- c("ddp","sdm","wdl","wdc","ngt")
 dep_flux_colors <- c(ddp="#846040",sdm="#D78C6A",wdl="#74ACE8",wdc="#3E7DD1",ngt="#3FC13A",wdep="#8B6FB5")
 requested_individual_variables <- variables_requested[!startsWith(variables_requested,"dep_")]
 optical_plot_variables <- if (exists("optical_variables")) optical_variables else character(0)
+column_plot_variables <- if (exists("column_variables")) column_variables else character(0)
 
 ########################
 ### HELPER FUNCTIONS ###
@@ -176,18 +177,57 @@ make_plot_dir <- function(category) {
   dir.create(out,recursive=TRUE,showWarnings=FALSE)
   out
 }
-compute_total_dep_flux <- function(expname,exptype,mss_logical,field_lon,field_lat,box=NULL) {
-  suffix <- get_variable_suffix(mss_logical)
-  total <- NULL
+
+timeseries_axis_indices <- function(tt,nmax=7) {
+  n <- length(tt)
+  if (n <= nmax) return(seq_len(n))
+  unique(round(seq(1,n,length.out=nmax)))
+}
+
+add_mean_square <- function(values,col,cex=2.8) {
+  m <- mean(values,na.rm=TRUE)
+  if (!is.finite(m)) return(invisible(NULL))
+  usr <- par("usr")
+  xmean <- usr[1]-0.018*(usr[2]-usr[1])
+  points(xmean,m,pch=15,cex=cex,col=col,xpd=NA)
+}
+
+read_lifetime_components <- function(expname,exptype,suffix,variable_table) {
+
+  mss_name <- paste0("mss_",suffix)
+  mss_data <- read_plot_data(expname,exptype,mss_name,variable_table,"mss")
+
+  dep_total <- NULL
+  available_fluxes <- character(0)
+
   for (flux in dep_fluxes) {
-    nm <- paste0(flux,"_",suffix)
-    tbl <- tryCatch(resolve_variables(exptype,nm),error=function(e) data.frame())
-    if (nrow(tbl) == 0) next
-    d <- read_plot_data(expname,exptype,nm,tbl,flux)
-    ts <- if (is.null(box)) global_flux_tg_day(d$data,field_lon,field_lat) else regional_flux_tg_day(d$data,field_lon,field_lat,box)
-    if (is.null(total)) total <- ts else total <- total+ts
+    dep_name <- paste0(flux,"_",suffix)
+    if (!dep_name %in% variable_table$logical_name) next
+
+    d <- read_plot_data(expname,exptype,dep_name,variable_table,flux)
+
+    if (d$nx != mss_data$nx || d$ny != mss_data$ny || d$nt != mss_data$nt)
+      stop("MSS/deposition dimensions differ for lifetime_",suffix)
+
+    if (is.null(dep_total)) dep_total <- d$data else dep_total <- dep_total+d$data
+    available_fluxes <- c(available_fluxes,flux)
   }
-  total
+
+  if (is.null(dep_total))
+    stop("No deposition diagnostics available for lifetime_",suffix)
+
+  lifetime_field <- mss_data$data/(dep_total*86400)
+  lifetime_field[!is.finite(lifetime_field) | lifetime_field < 0] <- NA_real_
+
+  list(
+    mss=mss_data$data,
+    dep=dep_total,
+    lifetime=lifetime_field,
+    nx=mss_data$nx,
+    ny=mss_data$ny,
+    nt=mss_data$nt,
+    fluxes=available_fluxes
+  )
 }
 
 ############################
@@ -258,21 +298,6 @@ for (type in plot_types) {
     tmean_tim <- seq.POSIXt(from=as.POSIXct(paste0(substr(sDate,1,4),"-",substr(sDate,5,6),"-",substr(sDate,7,8)," 00:00:00"),tz="UTC"),by="3 hours",length.out=nt)
 
 
-dep_lifetime1 <- NULL; dep_lifetime2 <- NULL
-mean_mass1 <- mean(tmean_var1,na.rm=TRUE); mean_mass2 <- mean(tmean_var2,na.rm=TRUE)
-mean_tau1 <- NA_real_; mean_tau2 <- NA_real_
-if (type %in% c("mss","mss_from_mr")) {
-  dep1 <- if (regional_mode) compute_total_dep_flux(expname1,exptype1,variable1,field_lon,field_lat,region_box) else compute_total_dep_flux(expname1,exptype1,variable1,field_lon,field_lat,NULL)
-  dep2 <- if (regional_mode) compute_total_dep_flux(expname2,exptype2,variable2,field_lon,field_lat,region_box) else compute_total_dep_flux(expname2,exptype2,variable2,field_lon,field_lat,NULL)
-  if (!is.null(dep1) && !is.null(dep2)) {
-    dep_lifetime1 <- tmean_var1/dep1
-    dep_lifetime2 <- tmean_var2/dep2
-    dep_lifetime1[!is.finite(dep_lifetime1) | dep_lifetime1 < 0] <- NA_real_
-    dep_lifetime2[!is.finite(dep_lifetime2) | dep_lifetime2 < 0] <- NA_real_
-    mean_tau1 <- mean(dep_lifetime1,na.rm=TRUE); mean_tau2 <- mean(dep_lifetime2,na.rm=TRUE)
-  }
-}
-
     ### MASSDIA is a global diagnostic and is intentionally disabled for regional plots
     massdiag1 <- NULL
     massdiag2 <- NULL
@@ -285,6 +310,19 @@ if (type %in% c("mss","mss_from_mr")) {
     hours <- c(0,3,6,9,12,15,18,21)
     dhourmean_var1 <- sapply(hours,function(h) mean(tmean_var1[hour == h],na.rm=TRUE))
     dhourmean_var2 <- sapply(hours,function(h) mean(tmean_var2[hour == h],na.rm=TRUE))
+
+    ts_plot <- aggregate_pair_for_plot(tmean_var1,tmean_var2,tmean_tim,variable1)
+    plot_tmean_tim <- ts_plot$time
+    plot_tmean_var1 <- ts_plot$value1
+    plot_tmean_var2 <- ts_plot$value2
+
+    ### MASSDIA stays at its native diagnostic timestamps; hide it when the
+    ### requested output time series is daily/monthly to avoid mixing cadences.
+    if (ts_plot$aggregation != "3hourly") {
+      massdiag1 <- NULL
+      massdiag2 <- NULL
+    }
+
     field_breaks <- positive_breaks(c(field_plot1,field_plot2),ncolors=200)
     field_breaks_diff <- difference_breaks(field_plot2-field_plot1,ncolors=200)
 
@@ -312,53 +350,65 @@ if (type %in% c("mss","mss_from_mr")) {
     MapNC(filename_topo="",figure_box=figure_box,field_show_box=field_show_box,coastlineWorldFine_lwd=coastlineWorldFine_lwd,gridlines=gridlines,projection=projection,lonmax=lonmax,lonmin=lonmin,latmax=latmax,latmin=latmin,drawMapBox=regional_mode,field_value=field_plot2-field_plot1,field_lon=field_lon,field_lat=field_lat,field_pallete_name="MNMB",field_breaks=field_breaks_diff,field_units=units,field_pallete_starting_alpha=100,field_show_legend=TRUE,field_legend_mai_right=1.8,field_legend_nlabels=7)
 
     par(mai=c(2,2,0,0.4),family="Century Gothic")
-    x <- seq_along(tmean_tim)
-    ts_values <- c(tmean_var1,tmean_var2)
+    x <- seq_along(plot_tmean_tim)
+    ts_values <- c(plot_tmean_var1,plot_tmean_var2)
     if (!is.null(massdiag1)) ts_values <- c(ts_values,massdiag1$value,massdiag2$value)
     yseq <- positive_axis_ticks(ts_values,n=10)
+
     plot(x,type="n",axes=FALSE,ann=FALSE,ylim=c(0,max(yseq$breaks)),yaxs="i")
     mtext("Time",side=1,line=12,cex=3.5)
-    if (type %in% c("mss","mss_from_mr")) mtext(if (regional_mode) paste0(region," mass (Tg)") else "Global mass (Tg)",side=2,line=11,cex=3.5)
-    IDx_labels <- which(format(tmean_tim,"%H") == "00" & format(tmean_tim,"%d") %in% c("01","05","10","15","20","25"))
-    IDx_labels <- unique(c(1,IDx_labels,length(tmean_tim)))
-    axis(1,at=x[IDx_labels],labels=format(tmean_tim[IDx_labels],"%Y-%m-%d"),cex.axis=4,line=4,lty=0)
-    axis(1,at=x[IDx_labels],labels=FALSE,tck=0.01); axis(1,at=x[IDx_labels],labels=FALSE,tck=-0.01)
-    axis(2,at=yseq$breaks,labels=yseq$labels,las=1,cex.axis=3)
-    box(lwd=2); abline(h=yseq$breaks,lwd=1,col="grey"); abline(v=x[IDx_labels],lwd=1,col="grey")
-    lines(x,tmean_var1,lwd=5,col="blue"); lines(x,tmean_var2,lwd=5,col="red")
 
-points(x,tmean_var1,pch=19,cex=1.4,col="blue"); points(x,tmean_var2,pch=19,cex=1.4,col="red")
-if (!is.null(dep_lifetime1)) {
-  tau <- c(dep_lifetime1,dep_lifetime2); tau <- tau[is.finite(tau)]
-  if (length(tau) > 0) {
-    tau_ticks <- positive_axis_ticks(tau,n=10)
-    par(new=TRUE)
-    plot(x,type="n",axes=FALSE,ann=FALSE,ylim=c(0,max(tau_ticks$breaks)),xaxs="i",yaxs="i")
-    axis(4,at=tau_ticks$breaks,labels=tau_ticks$labels,las=1,cex.axis=3)
-    mtext("Deposition lifetime (days)",side=4,line=7,cex=3.5)
-    lines(x,dep_lifetime1,lwd=4,lty=2,col="blue")
-    lines(x,dep_lifetime2,lwd=4,lty=2,col="red")
-    legend("topright",legend=c(paste0(expname1," lifetime"),paste0(expname2," lifetime")),lwd=4,lty=2,col=c("blue","red"),cex=2,bty="n")
-    usr <- par("usr")
-    text(usr[1]+0.02*(usr[2]-usr[1]),usr[4]-0.08*(usr[4]-usr[3]),paste0(expname1,": mean MSS=",formatC(mean_mass1,digits=2,format="f")," Tg | mean lifetime=",formatC(mean_tau1,digits=2,format="f")," d"),adj=c(0,1),cex=1.7,col="blue")
-    text(usr[1]+0.02*(usr[2]-usr[1]),usr[4]-0.16*(usr[4]-usr[3]),paste0(expname2,": mean MSS=",formatC(mean_mass2,digits=2,format="f")," Tg | mean lifetime=",formatC(mean_tau2,digits=2,format="f")," d"),adj=c(0,1),cex=1.7,col="red")
-  }
-}
+    if (type %in% c("mss","mss_from_mr"))
+      mtext(if (regional_mode) paste0(region," mass (Tg)") else "Global mass (Tg)",
+            side=2,line=11,cex=3.5)
+
+    IDx_labels <- timeseries_axis_indices(plot_tmean_tim)
+    axis(1,at=x[IDx_labels],
+         labels=format(plot_tmean_tim[IDx_labels],"%Y-%m-%d"),
+         cex.axis=4,line=4,lty=0)
+    axis(1,at=x[IDx_labels],labels=FALSE,tck=0.01)
+    axis(1,at=x[IDx_labels],labels=FALSE,tck=-0.01)
+    axis(2,at=yseq$breaks,labels=yseq$labels,las=1,cex.axis=3)
+
+    box(lwd=2)
+    abline(h=yseq$breaks,lwd=1,col="grey")
+    abline(v=x[IDx_labels],lwd=1,col="grey")
+
+    lines(x,plot_tmean_var1,lwd=5,col="blue")
+    points(x,plot_tmean_var1,pch=19,cex=1.4,col="blue")
+    lines(x,plot_tmean_var2,lwd=5,col="red")
+    points(x,plot_tmean_var2,pch=19,cex=1.4,col="red")
+
+    ### Period means: pch=15 at the far-left side of the time-series panel.
+    add_mean_square(plot_tmean_var1,"blue")
+    add_mean_square(plot_tmean_var2,"red")
 
     if (!is.null(massdiag1)) {
-      massdiag_x1 <- as.numeric(difftime(massdiag1$time,tmean_tim[1],units="hours"))/3 + 1
-      massdiag_x2 <- as.numeric(difftime(massdiag2$time,tmean_tim[1],units="hours"))/3 + 1
-      valid1 <- massdiag_x1 >= 1 & massdiag_x1 <= length(tmean_tim) & is.finite(massdiag1$value)
-      valid2 <- massdiag_x2 >= 1 & massdiag_x2 <= length(tmean_tim) & is.finite(massdiag2$value)
-      pch1 <- get_massdiag_pch(exptype1); pch2 <- get_massdiag_pch(exptype2)
-      points(massdiag_x1[valid1],massdiag1$value[valid1],pch=pch1,cex=2.8,lwd=2.5,col="blue")
-      points(massdiag_x2[valid2],massdiag2$value[valid2],pch=pch2,cex=2.8,lwd=2.5,col="red")
+      massdiag_x1 <- as.numeric(difftime(massdiag1$time,plot_tmean_tim[1],units="hours"))/3 + 1
+      massdiag_x2 <- as.numeric(difftime(massdiag2$time,plot_tmean_tim[1],units="hours"))/3 + 1
+      valid1 <- massdiag_x1 >= 1 & massdiag_x1 <= length(plot_tmean_tim) & is.finite(massdiag1$value)
+      valid2 <- massdiag_x2 >= 1 & massdiag_x2 <= length(plot_tmean_tim) & is.finite(massdiag2$value)
+      pch1 <- get_massdiag_pch(exptype1)
+      pch2 <- get_massdiag_pch(exptype2)
+      points(massdiag_x1[valid1],massdiag1$value[valid1],
+             pch=pch1,cex=2.8,lwd=2.5,col="blue")
+      points(massdiag_x2[valid2],massdiag2$value[valid2],
+             pch=pch2,cex=2.8,lwd=2.5,col="red")
     }
 
     if (is.null(massdiag1)) {
-      legend("top",legend=c(expname1,expname2),lwd=5,col=c("blue","red"),cex=3)
+      legend("top",legend=c(expname1,expname2),
+             lwd=5,col=c("blue","red"),cex=3)
     } else {
-      legend("top",legend=c(paste0(expname1," OUTPUT"),paste0(expname1," MASSDIA"),paste0(expname2," OUTPUT"),paste0(expname2," MASSDIA")),lwd=c(5,NA,5,NA),pch=c(19,get_massdiag_pch(exptype1),19,get_massdiag_pch(exptype2)),pt.lwd=c(1,2.5,1,2.5),col=c("blue","blue","red","red"),cex=2.5,ncol=2)
+      legend("top",
+             legend=c(paste0(expname1," OUTPUT"),
+                      paste0(expname1," MASSDIA"),
+                      paste0(expname2," OUTPUT"),
+                      paste0(expname2," MASSDIA")),
+             lwd=c(5,NA,5,NA),
+             pch=c(19,get_massdiag_pch(exptype1),19,get_massdiag_pch(exptype2)),
+             pt.lwd=c(1,2.5,1,2.5),
+             col=c("blue","blue","red","red"),cex=2.5,ncol=2)
     }
 
     par(mai=c(2,2,0,0.4),family="Century Gothic")
@@ -369,7 +419,10 @@ if (!is.null(dep_lifetime1)) {
     axis(1,at=1:8,labels=FALSE,tck=0.01); axis(1,at=1:8,labels=FALSE,tck=-0.01)
     axis(2,at=yseq$breaks,labels=yseq$labels,las=1,cex.axis=3)
     box(lwd=2); abline(h=yseq$breaks,lwd=1,col="grey"); abline(v=1:8,lwd=1,col="grey")
-    lines(1:8,dhourmean_var1,lwd=5,col="blue"); lines(1:8,dhourmean_var2,lwd=5,col="red")
+    lines(1:8,dhourmean_var1,lwd=5,col="blue")
+    points(1:8,dhourmean_var1,pch=19,cex=1.4,col="blue")
+    lines(1:8,dhourmean_var2,lwd=5,col="red")
+    points(1:8,dhourmean_var2,pch=19,cex=1.4,col="red")
     legend("top",legend=c(expname1,expname2),lwd=5,col=c("blue","red"),cex=3)
 
     dev.off()
@@ -387,6 +440,7 @@ if (!is.null(dep_lifetime1)) {
 if (length(rh_variables) > 0) {
 
   rh_height_label <- function(logical_name) {
+    logical_name <- strip_time_aggregation(logical_name)
     if (logical_name == "rh") return("~surface")
     x <- sub("^rh_","",logical_name)
     paste0("~",sub("m$","",x)," m")
@@ -451,6 +505,11 @@ if (length(rh_variables) > 0) {
     hours <- c(0,3,6,9,12,15,18,21)
     dhourmean_var1 <- sapply(hours,function(h) mean(tmean_var1[hour == h],na.rm=TRUE))
     dhourmean_var2 <- sapply(hours,function(h) mean(tmean_var2[hour == h],na.rm=TRUE))
+
+    ts_plot <- aggregate_pair_for_plot(tmean_var1,tmean_var2,tmean_tim,logical_name)
+    plot_tmean_tim <- ts_plot$time
+    plot_tmean_var1 <- ts_plot$value1
+    plot_tmean_var2 <- ts_plot$value2
 
     ### RH uses a fixed 0-100% colour scale so experiments/heights are directly comparable.
     field_breaks <- seq(0,100,length.out=201)
@@ -528,15 +587,15 @@ if (length(rh_variables) > 0) {
 
     ### Time series
     par(mai=c(2,2,0,0.4),family="Century Gothic")
-    x <- seq_along(tmean_tim)
+    x <- seq_along(plot_tmean_tim)
     plot(x,type="n",axes=FALSE,ann=FALSE,ylim=c(0,100),yaxs="i")
     mtext("Time",side=1,line=12,cex=3.5)
     mtext("Relative humidity (%)",side=2,line=11,cex=3.5)
 
-    IDx_labels <- which(format(tmean_tim,"%H") == "00" & format(tmean_tim,"%d") %in% c("01","05","10","15","20","25"))
-    IDx_labels <- unique(c(1,IDx_labels,length(tmean_tim)))
-
-    axis(1,at=x[IDx_labels],labels=format(tmean_tim[IDx_labels],"%Y-%m-%d"),cex.axis=4,line=4,lty=0)
+    IDx_labels <- timeseries_axis_indices(plot_tmean_tim)
+    axis(1,at=x[IDx_labels],
+         labels=format(plot_tmean_tim[IDx_labels],"%Y-%m-%d"),
+         cex.axis=4,line=4,lty=0)
     axis(1,at=x[IDx_labels],labels=FALSE,tck=0.01)
     axis(1,at=x[IDx_labels],labels=FALSE,tck=-0.01)
     axis(2,at=seq(0,100,10),labels=seq(0,100,10),las=1,cex.axis=3)
@@ -545,10 +604,12 @@ if (length(rh_variables) > 0) {
     abline(h=seq(0,100,10),lwd=1,col="grey")
     abline(v=x[IDx_labels],lwd=1,col="grey")
 
-    lines(x,tmean_var1,lwd=5,col="blue")
-    points(x,tmean_var1,pch=19,cex=1.5,col="blue")
-    lines(x,tmean_var2,lwd=5,col="red")
-    points(x,tmean_var2,pch=19,cex=1.5,col="red")
+    lines(x,plot_tmean_var1,lwd=5,col="blue")
+    points(x,plot_tmean_var1,pch=19,cex=1.5,col="blue")
+    lines(x,plot_tmean_var2,lwd=5,col="red")
+    points(x,plot_tmean_var2,pch=19,cex=1.5,col="red")
+    add_mean_square(plot_tmean_var1,"blue")
+    add_mean_square(plot_tmean_var2,"red")
     legend("top",legend=c(expname1,expname2),lwd=5,col=c("blue","red"),cex=3)
 
     ### Diurnal cycle
@@ -598,7 +659,18 @@ if (length(optical_plot_variables) > 0) {
     nt <- sum(sapply(d1,function(x) dim(x)[3]))
     data1 <- array(unlist(d1),dim=c(nx,ny,nt)); data2 <- array(unlist(d2),dim=c(nx,ny,nt))
     ll <- read_lon_lat(optics_file(expname1,seqDate[1])); field_lon <- ll$lon; field_lat <- ll$lat
-    f1 <- apply(data1,c(1,2),mean,na.rm=TRUE); f2 <- apply(data2,c(1,2),mean,na.rm=TRUE)
+    optical_base <- strip_time_aggregation(logical_name)
+
+    if (optical_base %in% c("ae550to865","ssa550","mec550")) {
+      ### Representative period map: derive from period-mean physical
+      ### components instead of averaging the instantaneous ratio.
+      f1 <- read_period_optical_map(expname1,seqDate,logical_name)
+      f2 <- read_period_optical_map(expname2,seqDate,logical_name)
+    } else {
+      f1 <- apply(data1,c(1,2),mean,na.rm=TRUE)
+      f2 <- apply(data2,c(1,2),mean,na.rm=TRUE)
+    }
+
     if (regional_mode) {
       fp1 <- mask_region_field(f1,field_lon,field_lat,region_box); fp2 <- mask_region_field(f2,field_lon,field_lat,region_box)
       ts1 <- regional_mean(data1,field_lon,field_lat,region_box); ts2 <- regional_mean(data2,field_lon,field_lat,region_box)
@@ -606,8 +678,12 @@ if (length(optical_plot_variables) > 0) {
     tt <- seq.POSIXt(from=as.POSIXct(paste0(substr(sDate,1,4),"-",substr(sDate,5,6),"-",substr(sDate,7,8)," 00:00:00"),tz="UTC"),by="3 hours",length.out=nt)
     hr <- as.integer(format(tt,"%H")); hrs <- c(0,3,6,9,12,15,18,21)
     dc1 <- sapply(hrs,function(h) mean(ts1[hr==h],na.rm=TRUE)); dc2 <- sapply(hrs,function(h) mean(ts2[hr==h],na.rm=TRUE))
+    ts_plot <- aggregate_pair_for_plot(ts1,ts2,tt,logical_name)
+    tt <- ts_plot$time
+    ts1 <- ts_plot$value1
+    ts2 <- ts_plot$value2
     br <- positive_breaks(c(fp1,fp2),200); brd <- difference_breaks(fp2-fp1,200)
-    units <- if (logical_name=="mec550") "m2 g^-1" else " "
+    units <- if (strip_time_aggregation(logical_name)=="mec550") "m2 g^-1" else " "
     plot_dir <- make_plot_dir("optics")
     file_out <- paste0(plot_dir,"Optics_",logical_name,"_",expname1,"-",expname2,region_file_tag,"_",sDate,"-",eDate,".png")
     dpi <- 300; png(file_out,width=(0.2+3*3.9+0.8+0.8)*dpi,height=(0.23+0.15+2+2.5)*dpi)
@@ -618,9 +694,240 @@ if (length(optical_plot_variables) > 0) {
     MapNC(filename_topo="",figure_box=figure_box,field_show_box=field_show_box,coastlineWorldFine_lwd=coastlineWorldFine_lwd,gridlines=gridlines,projection=projection,lonmax=lonmax,lonmin=lonmin,latmax=latmax,latmin=latmin,drawMapBox=regional_mode,field_value=fp1,field_lon=field_lon,field_lat=field_lat,field_pallete_name="TROPOMI_NEW",field_breaks=br,field_units=units,field_pallete_starting_alpha=100,field_show_legend=FALSE)
     MapNC(filename_topo="",figure_box=figure_box,field_show_box=field_show_box,coastlineWorldFine_lwd=coastlineWorldFine_lwd,gridlines=gridlines,projection=projection,lonmax=lonmax,lonmin=lonmin,latmax=latmax,latmin=latmin,drawMapBox=regional_mode,field_value=fp2,field_lon=field_lon,field_lat=field_lat,field_pallete_name="TROPOMI_NEW",field_breaks=br,field_units=units,field_pallete_starting_alpha=100,field_show_legend=TRUE,field_legend_mai_right=1.8,field_legend_nlabels=7)
     MapNC(filename_topo="",figure_box=figure_box,field_show_box=field_show_box,coastlineWorldFine_lwd=coastlineWorldFine_lwd,gridlines=gridlines,projection=projection,lonmax=lonmax,lonmin=lonmin,latmax=latmax,latmin=latmin,drawMapBox=regional_mode,field_value=fp2-fp1,field_lon=field_lon,field_lat=field_lat,field_pallete_name="MNMB",field_breaks=brd,field_units=units,field_pallete_starting_alpha=100,field_show_legend=TRUE,field_legend_mai_right=1.8,field_legend_nlabels=7)
-    par(mai=c(2,2,0,.4),family="Century Gothic"); x <- seq_along(tt); yt <- axis_ticks(c(ts1,ts2),10); plot(x,type="n",axes=FALSE,ann=FALSE,ylim=range(yt$breaks),yaxs="i"); mtext("Time",1,12,cex=3.5); mtext(get_optical_definition(logical_name)$title,2,11,cex=3.5); idx <- unique(c(1,which(format(tt,"%H")=="00" & format(tt,"%d") %in% c("01","05","10","15","20","25")),length(tt))); axis(1,at=x[idx],labels=format(tt[idx],"%Y-%m-%d"),cex.axis=4,line=4,lty=0); axis(2,at=yt$breaks,labels=yt$labels,las=1,cex.axis=3); box(); abline(h=yt$breaks,col="grey"); lines(x,ts1,lwd=5,col="blue"); points(x,ts1,pch=19,cex=1.4,col="blue"); lines(x,ts2,lwd=5,col="red"); points(x,ts2,pch=19,cex=1.4,col="red"); legend("top",c(expname1,expname2),lwd=5,col=c("blue","red"),cex=3)
+    par(mai=c(2,2,0,.4),family="Century Gothic")
+    x <- seq_along(tt)
+    yt <- axis_ticks(c(ts1,ts2),10)
+    plot(x,type="n",axes=FALSE,ann=FALSE,ylim=range(yt$breaks),yaxs="i")
+    mtext("Time",1,12,cex=3.5)
+    mtext(get_optical_definition(logical_name)$title,2,11,cex=3.5)
+    idx <- timeseries_axis_indices(tt)
+    axis(1,at=x[idx],labels=format(tt[idx],"%Y-%m-%d"),cex.axis=4,line=4,lty=0)
+    axis(2,at=yt$breaks,labels=yt$labels,las=1,cex.axis=3)
+    box()
+    abline(h=yt$breaks,col="grey")
+    lines(x,ts1,lwd=5,col="blue")
+    points(x,ts1,pch=19,cex=1.4,col="blue")
+    lines(x,ts2,lwd=5,col="red")
+    points(x,ts2,pch=19,cex=1.4,col="red")
+    add_mean_square(ts1,"blue")
+    add_mean_square(ts2,"red")
+    legend("top",c(expname1,expname2),lwd=5,col=c("blue","red"),cex=3)
     par(mai=c(2,2,0,.4),family="Century Gothic"); yd <- axis_ticks(c(dc1,dc2),10); plot(1:8,type="n",axes=FALSE,ann=FALSE,ylim=range(yd$breaks),yaxs="i"); mtext("Time (3 hourly UTC)",1,12,cex=3.5); axis(1,at=1:8,labels=sprintf("%02d",hrs),cex.axis=4,line=4,lty=0); axis(2,at=yd$breaks,labels=yd$labels,las=1,cex.axis=3); box(); abline(h=yd$breaks,col="grey"); lines(1:8,dc1,lwd=5,col="blue"); points(1:8,dc1,pch=19,cex=1.4,col="blue"); lines(1:8,dc2,lwd=5,col="red"); points(1:8,dc2,pch=19,cex=1.4,col="red"); legend("top",c(expname1,expname2),lwd=5,col=c("blue","red"),cex=3)
     dev.off(); tmp <- paste0(file_out,".tmp.png"); compress(file_in=file_out,file_out=tmp); file.rename(tmp,file_out)
+  }
+}
+
+
+############################
+### TOTAL-COLUMN GAS PLOTS ###
+############################
+if (length(column_plot_variables) > 0) {
+
+  for (logical_name in column_plot_variables) {
+
+    def <- get_column_definition(logical_name)
+
+    message("---> Plotting ",logical_name,
+            if (regional_mode) paste0(" for ",region) else "")
+
+    d1 <- list()
+    d2 <- list()
+
+    for (d in seq_along(seqDate)) {
+      d1[[d]] <- read_total_column(expname1,seqDate[d],logical_name)
+      d2[[d]] <- read_total_column(expname2,seqDate[d],logical_name)
+    }
+
+    nx1 <- dim(d1[[1]])[1]; ny1 <- dim(d1[[1]])[2]
+    nx2 <- dim(d2[[1]])[1]; ny2 <- dim(d2[[1]])[2]
+
+    if (nx1 != nx2 || ny1 != ny2)
+      stop("Spatial dimensions differ between experiments for ",logical_name)
+
+    nt1 <- sum(sapply(d1,function(x) dim(x)[3]))
+    nt2 <- sum(sapply(d2,function(x) dim(x)[3]))
+
+    if (nt1 != nt2)
+      stop("Time dimensions differ between experiments for ",logical_name)
+
+    data1 <- array(unlist(d1),dim=c(nx1,ny1,nt1))
+    data2 <- array(unlist(d2),dim=c(nx2,ny2,nt2))
+
+    ll <- read_lon_lat(column_file(expname1,seqDate[1]))
+    field_lon <- ll$lon
+    field_lat <- ll$lat
+
+    f1 <- apply(data1,c(1,2),mean,na.rm=TRUE)
+    f2 <- apply(data2,c(1,2),mean,na.rm=TRUE)
+
+    if (regional_mode) {
+      fp1 <- mask_region_field(f1,field_lon,field_lat,region_box)
+      fp2 <- mask_region_field(f2,field_lon,field_lat,region_box)
+      ts1 <- regional_mean(data1,field_lon,field_lat,region_box)
+      ts2 <- regional_mean(data2,field_lon,field_lat,region_box)
+    } else {
+      fp1 <- f1
+      fp2 <- f2
+      ts1 <- apply(data1,3,mean,na.rm=TRUE)
+      ts2 <- apply(data2,3,mean,na.rm=TRUE)
+    }
+
+    nt <- dim(data1)[3]
+    tt <- seq.POSIXt(
+      from=as.POSIXct(paste0(substr(sDate,1,4),"-",substr(sDate,5,6),"-",
+                             substr(sDate,7,8)," 00:00:00"),tz="UTC"),
+      by="3 hours",length.out=nt
+    )
+
+    hr <- as.integer(format(tt,"%H"))
+    hrs <- c(0,3,6,9,12,15,18,21)
+    dc1 <- sapply(hrs,function(h) mean(ts1[hr == h],na.rm=TRUE))
+    dc2 <- sapply(hrs,function(h) mean(ts2[hr == h],na.rm=TRUE))
+
+    ts_plot <- aggregate_pair_for_plot(ts1,ts2,tt,logical_name)
+    tt <- ts_plot$time
+    ts1 <- ts_plot$value1
+    ts2 <- ts_plot$value2
+
+    br <- positive_breaks(c(fp1,fp2),200)
+    brd <- difference_breaks(fp2-fp1,200)
+
+    plot_dir <- make_plot_dir("per_species")
+    file_out <- paste0(
+      plot_dir,"GasColumn_",logical_name,"_",expname1,"-",expname2,
+      region_file_tag,"_",sDate,"-",eDate,".png"
+    )
+
+    dpi <- 300
+    png(file_out,width=(0.2+3*3.9+0.8+0.8)*dpi,
+        height=(0.23+0.15+2+2.5)*dpi)
+
+    layout(
+      mat=matrix(c(1,1,1,1,1,1,2:13,14,14,14,14,15,15),4,6,byrow=TRUE),
+      widths=c(0.2,3.9,3.9,0.8,3.9,0.8),
+      heights=c(0.23,0.15,2,2.5)
+    )
+
+    par(mai=c(0,0,0,0))
+    plot.new()
+    text(
+      0.5,0.5,
+      paste0("Experiments: ",expname1," VS ",expname2,
+             "   |   Type: ",def$title,
+             region_title,"   |   Period: ",sDate,"-",eDate),
+      col="grey50",cex=6,family="Century Gothic"
+    )
+    abline(h=c(0,1),col="grey50",lwd=3)
+
+    par(mai=c(0,0,0,0)); plot.new()
+    par(mai=c(0,0,0,0)); plot.new()
+    text(.5,.5,paste0(expname1," (",exptype1,")"),cex=4.5,family="Century Gothic")
+    par(mai=c(0,0,0,0)); plot.new()
+    text(.5,.5,paste0(expname2," (",exptype2,")"),cex=4.5,family="Century Gothic")
+    par(mai=c(0,0,0,0)); plot.new()
+    par(mai=c(0,0,0,0)); plot.new()
+    text(.5,.5,paste0(expname2," - ",expname1),cex=4.5,family="Century Gothic")
+    par(mai=c(0,0,0,0)); plot.new()
+    par(mai=c(0,0,0,0)); plot.new()
+    text(.5,.5,def$title,cex=5,family="Century Gothic",srt=90)
+
+    MapNC(
+      filename_topo="",figure_box=figure_box,field_show_box=field_show_box,
+      coastlineWorldFine_lwd=coastlineWorldFine_lwd,gridlines=gridlines,
+      projection=projection,lonmax=lonmax,lonmin=lonmin,
+      latmax=latmax,latmin=latmin,drawMapBox=regional_mode,
+      field_value=fp1,field_lon=field_lon,field_lat=field_lat,
+      field_pallete_name="TROPOMI_NEW",field_breaks=br,
+      field_units=def$units,field_pallete_starting_alpha=100,
+      field_show_legend=FALSE
+    )
+
+    MapNC(
+      filename_topo="",figure_box=figure_box,field_show_box=field_show_box,
+      coastlineWorldFine_lwd=coastlineWorldFine_lwd,gridlines=gridlines,
+      projection=projection,lonmax=lonmax,lonmin=lonmin,
+      latmax=latmax,latmin=latmin,drawMapBox=regional_mode,
+      field_value=fp2,field_lon=field_lon,field_lat=field_lat,
+      field_pallete_name="TROPOMI_NEW",field_breaks=br,
+      field_units=def$units,field_pallete_starting_alpha=100,
+      field_show_legend=TRUE,field_legend_mai_right=1.8,field_legend_nlabels=7
+    )
+
+    MapNC(
+      filename_topo="",figure_box=figure_box,field_show_box=field_show_box,
+      coastlineWorldFine_lwd=coastlineWorldFine_lwd,gridlines=gridlines,
+      projection=projection,lonmax=lonmax,lonmin=lonmin,
+      latmax=latmax,latmin=latmin,drawMapBox=regional_mode,
+      field_value=fp2-fp1,field_lon=field_lon,field_lat=field_lat,
+      field_pallete_name="MNMB",field_breaks=brd,
+      field_units=def$units,field_pallete_starting_alpha=100,
+      field_show_legend=TRUE,field_legend_mai_right=1.8,field_legend_nlabels=7
+    )
+
+    ### Time series
+    par(mai=c(2,2,0,.4),family="Century Gothic")
+    x <- seq_along(tt)
+    yt <- axis_ticks(c(ts1,ts2),10)
+
+    plot(x,type="n",axes=FALSE,ann=FALSE,
+         ylim=range(yt$breaks),yaxs="i")
+
+    mtext("Time",1,12,cex=3.5)
+    mtext(paste0(def$title," (",def$units,")"),2,11,cex=3.5)
+
+    idx <- timeseries_axis_indices(tt)
+
+    axis(1,at=x[idx],labels=format(tt[idx],"%Y-%m-%d"),
+         cex.axis=4,line=4,lty=0)
+    axis(2,at=yt$breaks,labels=yt$labels,las=1,cex.axis=3)
+
+    box()
+    abline(h=yt$breaks,col="grey")
+    abline(v=x[idx],col="grey")
+
+    lines(x,ts1,lwd=5,col="blue")
+    points(x,ts1,pch=19,cex=1.4,col="blue")
+    lines(x,ts2,lwd=5,col="red")
+    points(x,ts2,pch=19,cex=1.4,col="red")
+    add_mean_square(ts1,"blue")
+    add_mean_square(ts2,"red")
+
+    legend("top",c(expname1,expname2),
+           lwd=5,col=c("blue","red"),cex=3)
+
+    ### Diurnal cycle
+    par(mai=c(2,2,0,.4),family="Century Gothic")
+    yd <- axis_ticks(c(dc1,dc2),10)
+
+    plot(1:8,type="n",axes=FALSE,ann=FALSE,
+         ylim=range(yd$breaks),yaxs="i")
+
+    mtext("Time (3 hourly UTC)",1,12,cex=3.5)
+    mtext(paste0(def$title," (",def$units,")"),2,11,cex=3.5)
+
+    axis(1,at=1:8,labels=sprintf("%02d",hrs),
+         cex.axis=4,line=4,lty=0)
+    axis(2,at=yd$breaks,labels=yd$labels,las=1,cex.axis=3)
+
+    box()
+    abline(h=yd$breaks,col="grey")
+    abline(v=1:8,col="grey")
+
+    lines(1:8,dc1,lwd=5,col="blue")
+    points(1:8,dc1,pch=19,cex=1.4,col="blue")
+    lines(1:8,dc2,lwd=5,col="red")
+    points(1:8,dc2,pch=19,cex=1.4,col="red")
+
+    legend("top",c(expname1,expname2),
+           lwd=5,col=c("blue","red"),cex=3)
+
+    dev.off()
+
+    tmp <- paste0(file_out,".tmp.png")
+    compress(file_in=file_out,file_out=tmp)
+    file.rename(tmp,file_out)
+
+    message("---> Total-column figure: ",file_out)
   }
 }
 
@@ -693,6 +1000,11 @@ if (length(precip_variables) > 0) {
 
     dhourmean_var1 <- sapply(hours,function(h) mean(tmean_var1[hour == h],na.rm=TRUE))
     dhourmean_var2 <- sapply(hours,function(h) mean(tmean_var2[hour == h],na.rm=TRUE))
+
+    ts_plot <- aggregate_pair_for_plot(tmean_var1,tmean_var2,tmean_tim,logical_name)
+    plot_tmean_tim <- ts_plot$time
+    plot_tmean_var1 <- ts_plot$value1
+    plot_tmean_var2 <- ts_plot$value2
 
     field_breaks <- positive_breaks(c(field_plot1,field_plot2),ncolors=200)
     field_breaks_diff <- difference_breaks(field_plot2-field_plot1,ncolors=200)
@@ -767,21 +1079,22 @@ if (length(precip_variables) > 0) {
       field_legend_mai_right=1.8,field_legend_nlabels=7
     )
 
-    ### Time series: regional/global spatial-mean 3-hour precipitation.
+    ### Time series
     par(mai=c(2,2,0,0.4),family="Century Gothic")
-    x <- seq_along(tmean_tim)
-    yseq <- positive_axis_ticks(c(tmean_var1,tmean_var2),n=10)
+    x <- seq_along(plot_tmean_tim)
+    yseq <- positive_axis_ticks(c(plot_tmean_var1,plot_tmean_var2),n=10)
 
     plot(x,type="n",axes=FALSE,ann=FALSE,
          ylim=c(0,max(yseq$breaks)),yaxs="i")
 
-    mtext("3-hour interval starting UTC",side=1,line=12,cex=3.5)
+    mtext("Time",side=1,line=12,cex=3.5)
     mtext("Precipitation (mm / 3 h)",side=2,line=11,cex=3.5)
 
-    IDx_labels <- which(format(tmean_tim,"%H") == "00" & format(tmean_tim,"%d") %in% c("01","05","10","15","20","25"))
-    IDx_labels <- unique(c(1,IDx_labels,length(tmean_tim)))
+    IDx_labels <- timeseries_axis_indices(plot_tmean_tim)
 
-    axis(1,at=x[IDx_labels],labels=format(tmean_tim[IDx_labels],"%Y-%m-%d"),cex.axis=4,line=4,lty=0)
+    axis(1,at=x[IDx_labels],
+         labels=format(plot_tmean_tim[IDx_labels],"%Y-%m-%d"),
+         cex.axis=4,line=4,lty=0)
     axis(1,at=x[IDx_labels],labels=FALSE,tck=0.01)
     axis(1,at=x[IDx_labels],labels=FALSE,tck=-0.01)
     axis(2,at=yseq$breaks,labels=yseq$labels,las=1,cex.axis=3)
@@ -790,10 +1103,12 @@ if (length(precip_variables) > 0) {
     abline(h=yseq$breaks,lwd=1,col="grey")
     abline(v=x[IDx_labels],lwd=1,col="grey")
 
-    lines(x,tmean_var1,lwd=5,col="blue")
-    points(x,tmean_var1,pch=19,cex=1.5,col="blue")
-    lines(x,tmean_var2,lwd=5,col="red")
-    points(x,tmean_var2,pch=19,cex=1.5,col="red")
+    lines(x,plot_tmean_var1,lwd=5,col="blue")
+    points(x,plot_tmean_var1,pch=19,cex=1.5,col="blue")
+    lines(x,plot_tmean_var2,lwd=5,col="red")
+    points(x,plot_tmean_var2,pch=19,cex=1.5,col="red")
+    add_mean_square(plot_tmean_var1,"blue")
+    add_mean_square(plot_tmean_var2,"red")
     legend("top",legend=c(expname1,expname2),lwd=5,col=c("blue","red"),cex=3)
 
     ### Diurnal cycle
@@ -831,12 +1146,302 @@ if (length(precip_variables) > 0) {
   }
 }
 
+
+###################################
+### DEPOSITION LIFETIME PLOTS ###
+###################################
+if (length(lifetime_variables) > 0) {
+
+  for (lifetime_name in lifetime_variables) {
+
+    suffix <- sub("^lifetime_","",strip_time_aggregation(lifetime_name))
+    mss_name <- paste0("mss_",suffix)
+
+    message("---> Plotting ",lifetime_name,
+            if (regional_mode) paste0(" for ",region) else "")
+
+    d1 <- read_lifetime_components(
+      expname1,exptype1,suffix,variables_exp1
+    )
+    d2 <- read_lifetime_components(
+      expname2,exptype2,suffix,variables_exp2
+    )
+
+    if (d1$nx != d2$nx || d1$ny != d2$ny)
+      stop("Spatial dimensions differ between experiments for ",lifetime_name)
+
+    if (d1$nt != d2$nt)
+      stop("Time dimensions differ between experiments for ",lifetime_name)
+
+    file1 <- variable_file(mss_name,variables_exp1,expname1,seqDate[1])
+    ll <- read_lon_lat(file1)
+    field_lon <- ll$lon
+    field_lat <- ll$lat
+
+    ### Spatial lifetime uses the period-mean burden divided by the
+    ### period-mean total deposition loss at each grid cell.
+    field_var1 <- apply(d1$mss,c(1,2),mean,na.rm=TRUE) /
+                  (apply(d1$dep,c(1,2),mean,na.rm=TRUE)*86400)
+    field_var2 <- apply(d2$mss,c(1,2),mean,na.rm=TRUE) /
+                  (apply(d2$dep,c(1,2),mean,na.rm=TRUE)*86400)
+
+    field_var1[!is.finite(field_var1) | field_var1 < 0] <- NA_real_
+    field_var2[!is.finite(field_var2) | field_var2 < 0] <- NA_real_
+
+    if (regional_mode) {
+      field_plot1 <- mask_region_field(field_var1,field_lon,field_lat,region_box)
+      field_plot2 <- mask_region_field(field_var2,field_lon,field_lat,region_box)
+
+      mass1 <- regional_mass_tg(d1$mss,field_lon,field_lat,region_box)
+      mass2 <- regional_mass_tg(d2$mss,field_lon,field_lat,region_box)
+      dep1 <- regional_flux_tg_day(d1$dep,field_lon,field_lat,region_box)
+      dep2 <- regional_flux_tg_day(d2$dep,field_lon,field_lat,region_box)
+    } else {
+      field_plot1 <- field_var1
+      field_plot2 <- field_var2
+
+      mass1 <- global_mass_tg(d1$mss,field_lon,field_lat)
+      mass2 <- global_mass_tg(d2$mss,field_lon,field_lat)
+      dep1 <- global_flux_tg_day(d1$dep,field_lon,field_lat)
+      dep2 <- global_flux_tg_day(d2$dep,field_lon,field_lat)
+    }
+
+    ### Regional/global lifetime is ratio of integrated burden to integrated
+    ### total deposition loss, giving days because dep1/dep2 are Tg day^-1.
+    tmean_var1 <- mass1/dep1
+    tmean_var2 <- mass2/dep2
+    tmean_var1[!is.finite(tmean_var1) | tmean_var1 < 0] <- NA_real_
+    tmean_var2[!is.finite(tmean_var2) | tmean_var2 < 0] <- NA_real_
+
+    tmean_tim <- seq.POSIXt(
+      from=as.POSIXct(
+        paste0(substr(sDate,1,4),"-",substr(sDate,5,6),"-",
+               substr(sDate,7,8)," 00:00:00"),
+        tz="UTC"
+      ),
+      by="3 hours",length.out=d1$nt
+    )
+
+    hour <- as.integer(format(tmean_tim,"%H"))
+    hours <- c(0,3,6,9,12,15,18,21)
+
+    dhourmean_var1 <- sapply(
+      hours,function(h) mean(tmean_var1[hour == h],na.rm=TRUE)
+    )
+    dhourmean_var2 <- sapply(
+      hours,function(h) mean(tmean_var2[hour == h],na.rm=TRUE)
+    )
+
+    ts_plot <- aggregate_pair_for_plot(
+      tmean_var1,tmean_var2,tmean_tim,lifetime_name
+    )
+    plot_tmean_tim <- ts_plot$time
+    plot_tmean_var1 <- ts_plot$value1
+    plot_tmean_var2 <- ts_plot$value2
+
+    field_breaks <- positive_breaks(
+      c(field_plot1,field_plot2),ncolors=200
+    )
+    field_breaks_diff <- difference_breaks(
+      field_plot2-field_plot1,ncolors=200
+    )
+
+    plot_category <- get_plot_category(mss_name)
+    plot_dir <- make_plot_dir(plot_category)
+
+    file_out <- paste0(
+      plot_dir,"DepositionLifetime_",lifetime_name,"_",
+      expname1,"-",expname2,region_file_tag,"_",sDate,"-",eDate,".png"
+    )
+
+    dpi <- 300
+    png(
+      file_out,
+      width=(0.2+3*3.9+0.8+0.8)*dpi,
+      height=(0.23+0.15+2+2.5)*dpi
+    )
+
+    layout(
+      mat=matrix(
+        c(1,1,1,1,1,1,2:13,14,14,14,14,15,15),
+        4,6,byrow=TRUE
+      ),
+      widths=c(0.2,3.9,3.9,0.8,3.9,0.8),
+      heights=c(0.23,0.15,2,2.5)
+    )
+
+    par(mai=c(0,0,0,0))
+    plot.new()
+    text(
+      0.5,0.5,
+      paste0(
+        "Experiments: ",expname1," VS ",expname2,
+        "   |   Type: Deposition lifetime ",toupper(suffix),
+        region_title,"   |   Period: ",sDate,"-",eDate
+      ),
+      col="grey50",cex=6,family="Century Gothic"
+    )
+    abline(h=c(0,1),col="grey50",lwd=3)
+
+    par(mai=c(0,0,0,0)); plot.new()
+    par(mai=c(0,0,0,0)); plot.new()
+    text(
+      0.5,0.5,paste0(expname1," (",exptype1,")"),
+      col="grey20",cex=4.5,family="Century Gothic"
+    )
+    par(mai=c(0,0,0,0)); plot.new()
+    text(
+      0.5,0.5,paste0(expname2," (",exptype2,")"),
+      col="grey20",cex=4.5,family="Century Gothic"
+    )
+    par(mai=c(0,0,0,0)); plot.new()
+    par(mai=c(0,0,0,0)); plot.new()
+    text(
+      0.5,0.5,paste0(expname2," - ",expname1),
+      col="grey20",cex=4.5,family="Century Gothic"
+    )
+    par(mai=c(0,0,0,0)); plot.new()
+    par(mai=c(0,0,0,0)); plot.new()
+    text(
+      0.5,0.5,"Deposition lifetime",
+      col="grey20",cex=5,family="Century Gothic",srt=90
+    )
+
+    MapNC(
+      filename_topo="",figure_box=figure_box,field_show_box=field_show_box,
+      coastlineWorldFine_lwd=coastlineWorldFine_lwd,
+      gridlines=gridlines,projection=projection,
+      lonmax=lonmax,lonmin=lonmin,latmax=latmax,latmin=latmin,
+      drawMapBox=regional_mode,
+      field_value=field_plot1,field_lon=field_lon,field_lat=field_lat,
+      field_pallete_name="TROPOMI_NEW",
+      field_breaks=field_breaks,field_units="days",
+      field_pallete_starting_alpha=100,field_show_legend=FALSE
+    )
+
+    MapNC(
+      filename_topo="",figure_box=figure_box,field_show_box=field_show_box,
+      coastlineWorldFine_lwd=coastlineWorldFine_lwd,
+      gridlines=gridlines,projection=projection,
+      lonmax=lonmax,lonmin=lonmin,latmax=latmax,latmin=latmin,
+      drawMapBox=regional_mode,
+      field_value=field_plot2,field_lon=field_lon,field_lat=field_lat,
+      field_pallete_name="TROPOMI_NEW",
+      field_breaks=field_breaks,field_units="days",
+      field_pallete_starting_alpha=100,field_show_legend=TRUE,
+      field_legend_mai_right=1.8,field_legend_nlabels=7
+    )
+
+    MapNC(
+      filename_topo="",figure_box=figure_box,field_show_box=field_show_box,
+      coastlineWorldFine_lwd=coastlineWorldFine_lwd,
+      gridlines=gridlines,projection=projection,
+      lonmax=lonmax,lonmin=lonmin,latmax=latmax,latmin=latmin,
+      drawMapBox=regional_mode,
+      field_value=field_plot2-field_plot1,
+      field_lon=field_lon,field_lat=field_lat,
+      field_pallete_name="MNMB",
+      field_breaks=field_breaks_diff,field_units="days",
+      field_pallete_starting_alpha=100,field_show_legend=TRUE,
+      field_legend_mai_right=1.8,field_legend_nlabels=7
+    )
+
+    ### Time series
+    par(mai=c(2,2,0,0.4),family="Century Gothic")
+    x <- seq_along(plot_tmean_tim)
+    yseq <- positive_axis_ticks(
+      c(plot_tmean_var1,plot_tmean_var2),n=10
+    )
+
+    plot(
+      x,type="n",axes=FALSE,ann=FALSE,
+      ylim=c(0,max(yseq$breaks)),yaxs="i"
+    )
+
+    mtext("Time",side=1,line=12,cex=3.5)
+    mtext("Deposition lifetime (days)",side=2,line=11,cex=3.5)
+
+    IDx_labels <- timeseries_axis_indices(plot_tmean_tim)
+
+    axis(
+      1,at=x[IDx_labels],
+      labels=format(plot_tmean_tim[IDx_labels],"%Y-%m-%d"),
+      cex.axis=4,line=4,lty=0
+    )
+    axis(1,at=x[IDx_labels],labels=FALSE,tck=0.01)
+    axis(1,at=x[IDx_labels],labels=FALSE,tck=-0.01)
+    axis(2,at=yseq$breaks,labels=yseq$labels,las=1,cex.axis=3)
+
+    box(lwd=2)
+    abline(h=yseq$breaks,lwd=1,col="grey")
+    abline(v=x[IDx_labels],lwd=1,col="grey")
+
+    lines(x,plot_tmean_var1,lwd=5,col="blue")
+    points(x,plot_tmean_var1,pch=19,cex=1.4,col="blue")
+    lines(x,plot_tmean_var2,lwd=5,col="red")
+    points(x,plot_tmean_var2,pch=19,cex=1.4,col="red")
+
+    add_mean_square(plot_tmean_var1,"blue")
+    add_mean_square(plot_tmean_var2,"red")
+
+    legend(
+      "top",legend=c(expname1,expname2),
+      lwd=5,col=c("blue","red"),cex=3
+    )
+
+    ### Native 3-hourly diurnal cycle
+    par(mai=c(2,2,0,0.4),family="Century Gothic")
+    yseq <- positive_axis_ticks(
+      c(dhourmean_var1,dhourmean_var2),n=10
+    )
+
+    plot(
+      1:8,type="n",axes=FALSE,ann=FALSE,
+      ylim=c(0,max(yseq$breaks)),yaxs="i"
+    )
+
+    mtext("Time (3 hourly UTC)",side=1,line=12,cex=3.5)
+    mtext("Deposition lifetime (days)",side=2,line=11,cex=3.5)
+
+    axis(
+      1,at=1:8,
+      labels=c("00","03","06","09","12","15","18","21"),
+      cex.axis=4,line=4,lty=0
+    )
+    axis(1,at=1:8,labels=FALSE,tck=0.01)
+    axis(1,at=1:8,labels=FALSE,tck=-0.01)
+    axis(2,at=yseq$breaks,labels=yseq$labels,las=1,cex.axis=3)
+
+    box(lwd=2)
+    abline(h=yseq$breaks,lwd=1,col="grey")
+    abline(v=1:8,lwd=1,col="grey")
+
+    lines(1:8,dhourmean_var1,lwd=5,col="blue")
+    points(1:8,dhourmean_var1,pch=19,cex=1.4,col="blue")
+    lines(1:8,dhourmean_var2,lwd=5,col="red")
+    points(1:8,dhourmean_var2,pch=19,cex=1.4,col="red")
+
+    legend(
+      "top",legend=c(expname1,expname2),
+      lwd=5,col=c("blue","red"),cex=3
+    )
+
+    dev.off()
+
+    file_tmp <- paste0(file_out,".tmp.png")
+    compress(file_in=file_out,file_out=file_tmp)
+    file.rename(file_tmp,file_out)
+
+    message("---> Deposition lifetime figure: ",file_out)
+  }
+}
+
 ############################
 ### COMPOSITE DEP_* PLOTS ###
 ############################
 if (length(dep_variables) > 0) {
   for (dep_name in dep_variables) {
-    dep_suffix <- sub("^dep_","",dep_name)
+    dep_suffix <- get_variable_suffix(dep_name)
     flux_variables <- paste0(dep_fluxes,"_",dep_suffix)
     available_fluxes <- dep_fluxes[sapply(flux_variables,function(v) v %in% variables_exp1$logical_name && v %in% variables_exp2$logical_name)]
 
@@ -887,6 +1492,16 @@ if (length(dep_variables) > 0) {
         massdiag2$value <- -massdiag2$value
       }
 
+      dhourmean_var1 <- sapply(hours,function(h) mean(tmean_var1[hour == h],na.rm=TRUE))
+      dhourmean_var2 <- sapply(hours,function(h) mean(tmean_var2[hour == h],na.rm=TRUE))
+
+      ts_plot <- aggregate_pair_for_plot(tmean_var1,tmean_var2,tmean_tim,dep_name)
+
+      if (ts_plot$aggregation != "3hourly") {
+        massdiag1 <- NULL
+        massdiag2 <- NULL
+      }
+
       dep_data[[flux]] <- list(
         field_var1=field_var1,
         field_var2=field_var2,
@@ -898,17 +1513,23 @@ if (length(dep_variables) > 0) {
         tmean_var1=tmean_var1,
         tmean_var2=tmean_var2,
         tmean_tim=tmean_tim,
+        plot_var1=ts_plot$value1,
+        plot_var2=ts_plot$value2,
+        plot_tim=ts_plot$time,
+        aggregation=ts_plot$aggregation,
         massdiag1=massdiag1,
         massdiag2=massdiag2,
-        dhourmean_var1=sapply(hours,function(h) mean(tmean_var1[hour == h],na.rm=TRUE)),
-        dhourmean_var2=sapply(hours,function(h) mean(tmean_var2[hour == h],na.rm=TRUE))
+        dhourmean_var1=dhourmean_var1,
+        dhourmean_var2=dhourmean_var2
       )
     }
 
     wet_massdiag1 <- NULL
     wet_massdiag2 <- NULL
 
-    if (!regional_mode && all(c("wdl","wdc") %in% available_fluxes) && exists("massdiag_compare") && massdiag_compare) {
+    if (!regional_mode && dep_data[[available_fluxes[1]]]$aggregation == "3hourly" &&
+        all(c("wdl","wdc") %in% available_fluxes) &&
+        exists("massdiag_compare") && massdiag_compare) {
       wet_logical_name <- paste0("wdl_",dep_suffix)
       wet_massdiag1 <- read_massdiag_series_hours(expname1,wet_logical_name,variables_exp1,seqDate,hours=massdiag_hours,column="WDEP_FLX")
       wet_massdiag2 <- read_massdiag_series_hours(expname2,wet_logical_name,variables_exp2,seqDate,hours=massdiag_hours,column="WDEP_FLX")
@@ -956,21 +1577,26 @@ if (length(dep_variables) > 0) {
       MapNC(filename_topo="",figure_box=figure_box,field_show_box=field_show_box,coastlineWorldFine_lwd=coastlineWorldFine_lwd,gridlines=gridlines,projection=projection,lonmax=lonmax,lonmin=lonmin,latmax=latmax,latmin=latmin,drawMapBox=regional_mode,field_value=z$field_var2-z$field_var1,field_lon=z$field_lon,field_lat=z$field_lat,field_pallete_name="MNMB",field_breaks=z$field_breaks_diff,field_units=z$units,field_pallete_starting_alpha=100,field_show_legend=TRUE,field_legend_mai_right=1.8,field_legend_nlabels=7)
     }
 
-    tmean_tim <- dep_data[[available_fluxes[1]]]$tmean_tim
+    tmean_tim <- dep_data[[available_fluxes[1]]]$plot_tim
     x <- seq_along(tmean_tim)
-    all_ts <- unlist(lapply(available_fluxes,function(flux) c(dep_data[[flux]]$tmean_var1,dep_data[[flux]]$tmean_var2)))
+    all_ts <- unlist(lapply(
+      available_fluxes,
+      function(flux) c(dep_data[[flux]]$plot_var1,dep_data[[flux]]$plot_var2)
+    ))
 
     for (flux in available_fluxes) {
-      if (!is.null(dep_data[[flux]]$massdiag1)) all_ts <- c(all_ts,dep_data[[flux]]$massdiag1$value,dep_data[[flux]]$massdiag2$value)
+      if (!is.null(dep_data[[flux]]$massdiag1))
+        all_ts <- c(all_ts,dep_data[[flux]]$massdiag1$value,dep_data[[flux]]$massdiag2$value)
     }
 
     wet_output1 <- NULL
     wet_output2 <- NULL
     if (all(c("wdl","wdc") %in% available_fluxes)) {
-      wet_output1 <- dep_data[["wdl"]]$tmean_var1 + dep_data[["wdc"]]$tmean_var1
-      wet_output2 <- dep_data[["wdl"]]$tmean_var2 + dep_data[["wdc"]]$tmean_var2
+      wet_output1 <- dep_data[["wdl"]]$plot_var1 + dep_data[["wdc"]]$plot_var1
+      wet_output2 <- dep_data[["wdl"]]$plot_var2 + dep_data[["wdc"]]$plot_var2
       all_ts <- c(all_ts,wet_output1,wet_output2)
-      if (!is.null(wet_massdiag1)) all_ts <- c(all_ts,wet_massdiag1$value,wet_massdiag2$value)
+      if (!is.null(wet_massdiag1))
+        all_ts <- c(all_ts,wet_massdiag1$value,wet_massdiag2$value)
     }
 
     par(mai=c(2,2,0,0.4),family="Century Gothic")
@@ -983,8 +1609,7 @@ if (length(dep_variables) > 0) {
     mtext("Time",side=1,line=12,cex=3.5)
     mtext(if (regional_mode) paste0(region," flux (Tg/day)") else "Global flux (Tg/day)",side=2,line=11,cex=3.5)
 
-    IDx_labels <- which(format(tmean_tim,"%H") == "00" & format(tmean_tim,"%d") %in% c("01","05","10","15","20","25"))
-    IDx_labels <- unique(c(1,IDx_labels,length(tmean_tim)))
+    IDx_labels <- timeseries_axis_indices(tmean_tim)
     axis(1,at=x[IDx_labels],labels=format(tmean_tim[IDx_labels],"%Y-%m-%d"),cex.axis=4,line=4,lty=0)
     axis(1,at=x[IDx_labels],labels=FALSE,tck=0.01)
     axis(1,at=x[IDx_labels],labels=FALSE,tck=-0.01)
@@ -993,14 +1618,13 @@ if (length(dep_variables) > 0) {
     abline(h=yseq$breaks,lwd=1,col="grey")
     abline(v=x[IDx_labels],lwd=1,col="grey")
 
-    midnight_idx <- get_midnight_idx(tmean_tim)
     for (flux in available_fluxes) {
-      lines(x,dep_data[[flux]]$tmean_var1,lwd=5,col=dep_flux_colors[flux],lty=1)
-      points(x,dep_data[[flux]]$tmean_var1,pch=19,cex=1.5,col=dep_flux_colors[flux])
-      lines(x,dep_data[[flux]]$tmean_var2,lwd=5,col=dep_flux_colors[flux],lty=2)
-      points(x,dep_data[[flux]]$tmean_var2,pch=19,cex=1.5,col=dep_flux_colors[flux])
-      points(midnight_idx,dep_data[[flux]]$tmean_var1[midnight_idx],pch=19,cex=2.4,col=dep_flux_colors[flux])
-      points(midnight_idx,dep_data[[flux]]$tmean_var2[midnight_idx],pch=19,cex=2.4,col=dep_flux_colors[flux])
+      lines(x,dep_data[[flux]]$plot_var1,lwd=5,col=dep_flux_colors[flux],lty=1)
+      points(x,dep_data[[flux]]$plot_var1,pch=19,cex=1.5,col=dep_flux_colors[flux])
+      lines(x,dep_data[[flux]]$plot_var2,lwd=5,col=dep_flux_colors[flux],lty=2)
+      points(x,dep_data[[flux]]$plot_var2,pch=19,cex=1.5,col=dep_flux_colors[flux])
+      add_mean_square(dep_data[[flux]]$plot_var1,dep_flux_colors[flux],cex=2.3)
+      add_mean_square(dep_data[[flux]]$plot_var2,dep_flux_colors[flux],cex=2.3)
     }
 
     pch1 <- get_massdiag_pch(exptype1)
@@ -1023,8 +1647,8 @@ if (length(dep_variables) > 0) {
       points(x,wet_output1,pch=19,cex=1.5,col=dep_flux_colors["wdep"])
       lines(x,wet_output2,lwd=5,col=dep_flux_colors["wdep"],lty=2)
       points(x,wet_output2,pch=19,cex=1.5,col=dep_flux_colors["wdep"])
-      points(midnight_idx,wet_output1[midnight_idx],pch=19,cex=2.4,col=dep_flux_colors["wdep"])
-      points(midnight_idx,wet_output2[midnight_idx],pch=19,cex=2.4,col=dep_flux_colors["wdep"])
+      add_mean_square(wet_output1,dep_flux_colors["wdep"],cex=2.3)
+      add_mean_square(wet_output2,dep_flux_colors["wdep"],cex=2.3)
 
       if (!is.null(wet_massdiag1)) {
         mx1 <- as.numeric(difftime(wet_massdiag1$time,tmean_tim[1],units="hours"))/3 + 1

@@ -1,17 +1,17 @@
 ### EXPERIMENT SETTINGS
 ### Experiment 1 (control/reference)
-expname1  <- "b315"
-exptype1  <- "HAM"
-expclass1 <- "nl"
+expname1  <- "iyfb"
+exptype1  <- "AER"
+expclass1 <- "rd"
 ### Experiment 2
 expname2  <- "jbjc"
 exptype2  <- "HAM"
 expclass2 <- "rd"
 ### Period
 sDate   <- "20190101"
-eDate   <- "20190131"
+eDate   <- "20190101"
 ### Runtype
-runtype <- "plot" # plot | download
+runtype <- "download" # plot | download
 ### Other
 massdiag_compare <- FALSE
 
@@ -26,6 +26,17 @@ grib_table_HAM <- "config/bins_hamm7ver4.0.csv"
 region <- "global"
 
 ### VARIABLES
+variables <- c(
+  "od_ss",
+  "od_du",
+  "od_pom",
+  "od_bc",
+  "od_so4",
+  "od_ni",
+  "od_am",
+  "od_soa"
+)
+
 #variables <- c("precip_total","precip_convective","precip_large_scale")
 
 #variables <- c(
@@ -54,22 +65,40 @@ region <- "global"
 #)
 
 ### mss and dep per HAM7 tracer
-variables <- c(
-  "mss_so4_as","mss_so4_ks","mss_so4_cs","mss_so4_ns",
-  "mss_am_as",
-  "mss_ni_as","mss_ni_cs",
+#variables <- c(
+#  "mss_so4_as","mss_so4_ks","mss_so4_cs","mss_so4_ns",
+#  "mss_am_as",
+#  "mss_ni_as","mss_ni_cs",
 #  "mss_bc_as","mss_bc_ki","mss_bc_ks","mss_bc_cs",
 #  "mss_pom_as","mss_pom_ki","mss_pom_ks","mss_pom_cs",
 #  "mss_soa_ns","mss_soa_ks","mss_soa_as","mss_soa_cs","mss_soa_ki",
 #  "mss_ss_as","mss_ss_cs",
 #  "mss_du_as","mss_du_ai","mss_du_ci","mss_du_cs",
 
-  "dep_so4_as","dep_so4_ks","dep_so4_cs","dep_so4_ns",
-  "dep_am_as",
-  "dep_ni_as","dep_ni_cs"
+#  "dep_so4_as","dep_so4_ks","dep_so4_cs","dep_so4_ns",
+#  "dep_am_as",
+#  "dep_ni_as","dep_ni_cs"
 #  "dep_bc_as","dep_bc_ki","dep_bc_ks","dep_bc_cs",
 #  "dep_pom_as","dep_pom_ki","dep_pom_ks","dep_pom_cs",
 #  "dep_soa_ns","dep_soa_ks","dep_soa_as","dep_soa_cs","dep_soa_ki",
 #  "dep_ss_as","dep_ss_cs",
 #  "dep_du_as","dep_du_ai","dep_du_ci","dep_du_cs"
-)
+#)
+
+#variables <- c(
+#  "aod550",
+#  "aod550_daily",
+#  "aod865",
+#  "aod865_daily",
+#  "ae550to865",
+#  "ae550to865_daily",
+#  "aaod550",
+#  "aaod550_daily",
+#  "ssa550",
+#  "ssa550_daily",
+#  "mec550",
+#  "mec550_daily",
+#  "lifetime_ni_as",
+#  "lifetime_ni_as_daily",
+#  "lifetime_ni_as_monthly"
+#)

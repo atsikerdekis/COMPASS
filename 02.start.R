@@ -35,6 +35,109 @@ eDate_temp <- eDate_temp-1+step
 
 vdate2 <- gsub("-","",seq.Date(sDate_temp,eDate_temp,paste0(step," day")))
 
+#############################
+### ARCHIVE OLD DOWNLOADS ###
+#############################
+next_archive_dir <- function(exp_dir) {
+
+  existing_dirs <- list.dirs(exp_dir,full.names=FALSE,recursive=FALSE)
+  archive_dirs <- existing_dirs[grepl("^archive[0-9]{3}$",existing_dirs)]
+
+  if (length(archive_dirs) == 0) {
+    next_id <- 1
+  } else {
+    ids <- suppressWarnings(as.integer(sub("^archive","",archive_dirs)))
+    ids <- ids[is.finite(ids)]
+    next_id <- if (length(ids) == 0) 1 else max(ids)+1
+  }
+
+  file.path(exp_dir,paste0("archive",sprintf("%03d",next_id)))
+}
+
+archive_existing_download_files <- function(
+  expname,dates,
+  archive_sfc=FALSE,
+  archive_precip=FALSE,
+  archive_optics=FALSE,
+  archive_mec=FALSE,
+  archive_columns=FALSE,
+  archive_pl=FALSE,
+  archive_ml=FALSE
+) {
+
+  exp_dir <- file.path(path_data,expname)
+  dir.create(exp_dir,recursive=TRUE,showWarnings=FALSE)
+
+  targets <- character(0)
+
+  for (date in dates) {
+
+    if (archive_sfc)
+      targets <- c(targets,file.path(
+        exp_dir,paste0("CAMS_",expname,"_forecast00to21by03_0.7x0.7_sfc_",date,".nc")
+      ))
+
+    if (archive_precip)
+      targets <- c(targets,file.path(
+        exp_dir,paste0("CAMS_",expname,"_forecast03to24by03_0.7x0.7_sfc_precip_",date,".nc")
+      ))
+
+    if (archive_optics)
+      targets <- c(targets,file.path(
+        exp_dir,paste0("CAMS_",expname,"_forecast00to21by03_0.7x0.7_sfc_optics_",date,".nc")
+      ))
+
+    if (archive_mec)
+      targets <- c(targets,file.path(
+        exp_dir,paste0("CAMS_",expname,"_forecast00to21by03_0.7x0.7_sfc_mec_",date,".nc")
+      ))
+
+    if (archive_columns)
+      targets <- c(targets,file.path(
+        exp_dir,paste0("CAMS_",expname,"_forecast00to21by03_0.7x0.7_sfc_columns_",date,".nc")
+      ))
+
+    if (archive_pl)
+      targets <- c(targets,file.path(
+        exp_dir,paste0("CAMS_",expname,"_forecast00to21by03_0.7x0.7_pl_",date,".nc")
+      ))
+
+    if (archive_ml) {
+      targets <- c(
+        targets,
+        file.path(exp_dir,paste0("CAMS_",expname,"_forecast00to21by03_0.7x0.7_ml_",date,".nc")),
+        file.path(exp_dir,paste0("CAMS_",expname,"_forecast00to21by03_0.7x0.7_lnsp_",date,".nc"))
+      )
+    }
+  }
+
+  existing <- unique(targets[file.exists(targets)])
+
+  if (length(existing) == 0) {
+    message("---> No existing download files need archiving for ",expname,".")
+    return(invisible(NULL))
+  }
+
+  archive_dir <- next_archive_dir(exp_dir)
+  dir.create(archive_dir,recursive=TRUE,showWarnings=FALSE)
+
+  message(
+    "---> Existing files detected for ",expname,": ",length(existing),
+    " file(s). Moving them to ",archive_dir," before fresh download."
+  )
+
+  for (src in existing) {
+    dst <- file.path(archive_dir,basename(src))
+    ok <- file.rename(src,dst)
+    if (!ok)
+      stop("Could not archive existing file: ",src," -> ",dst)
+    message("     archived: ",basename(src))
+  }
+
+  message("---> Archive complete: ",archive_dir)
+  invisible(archive_dir)
+}
+
 ########################
 ### CHECK & DOWNLOAD ###
 ########################
@@ -85,7 +188,7 @@ if (runtype == "download") {
       params_pl <- paste(params_pl,collapse="/")
 
       ### Surface aerosol diagnostics
-      surface_columns <- c("gribddp","gribsdm","gribwdl","gribwdc","gribmss","gribngt")
+      surface_columns <- c("gribddp","gribsdm","gribwdl","gribwdc","gribmss","gribod","gribngt")
       params_sfc <- unique(expvars$grib[expvars$grib_column %in% surface_columns])
       params_sfc <- params_sfc[!is.na(params_sfc) & params_sfc != ""]
       params_sfc <- paste(params_sfc,collapse="/")
@@ -144,6 +247,23 @@ if ("mec550" %in% strip_time_aggregation(optical_variables)) {
       message("---> Optical parameters: ",ifelse(params_optics == "","none",params_optics))
       message("---> MEC burden parameters: ",ifelse(params_mec == "","none",params_mec))
       message("---> Total-column parameters: ",ifelse(params_columns == "","none",params_columns))
+
+      ### Archive existing target files once per experiment for this run.
+      ### Doing this before any child jobs are submitted avoids race conditions
+      ### between parallel download jobs choosing archiveNNN directories.
+      if (d == 1) {
+        archive_existing_download_files(
+          expname=expname,
+          dates=seqDate,
+          archive_sfc=params_sfc != "",
+          archive_precip=params_precip != "",
+          archive_optics=params_optics != "",
+          archive_mec=params_mec != "",
+          archive_columns=params_columns != "",
+          archive_pl=params_pl != "",
+          archive_ml=levels_ml != ""
+        )
+      }
 
       ########################
       ### SURFACE DOWNLOAD ###

@@ -64,6 +64,7 @@ variable_columns <- c(
   wdl = "gribwdl",
   wdc = "gribwdc",
   mss = "gribmss",
+  od  = "gribod",
   ngt = "gribngt"
 )
 
@@ -180,6 +181,27 @@ get_optical_required_gribs <- function(logical_names) {
     gribs <- c(gribs,"140.215")
 
   unique(gribs)
+}
+
+
+###########################################
+### HAM DEDICATED SPECIES AOD @ 550 NM ###
+###########################################
+### Dedicated HAM7 species-total AOD diagnostics. These are preferred for
+### od_<species> over summing tracer/mode gribod fields from the HAM table.
+### MARS/COMPASS notation PARAM.TABLE is used here:
+### e.g. ECMWF paramId 210208 -> 208.210.
+ham_species_od_definitions <- data.frame(
+  suffix = c("ss",     "du",     "pom",    "bc",     "so4",    "ni",     "am"),
+  grib   = c("208.210","209.210","210.210","211.210","212.210","250.210","251.210"),
+  short_name = c("ssaod550","duaod550","omaod550","bcaod550","suaod550","niaod550","amaod550"),
+  stringsAsFactors = FALSE
+)
+
+get_ham_species_od_definition <- function(suffix) {
+  x <- ham_species_od_definitions[ham_species_od_definitions$suffix == suffix,,drop=FALSE]
+  if (nrow(x) != 1) return(NULL)
+  x
 }
 
 
@@ -340,6 +362,26 @@ resolve_HAM_variable <- function(logical_name) {
   if (!prefix %in% c(names(variable_columns),"mss_from_mr")) { stop("Unsupported variable prefix '",prefix,"' in ",logical_name) }
   suffix <- get_variable_suffix(logical_name)
   grib_column <- if (prefix == "mss_from_mr") "grib" else variable_columns[[prefix]]
+
+  ########################################
+  ### DEDICATED SPECIES-TOTAL HAM AOD ###
+  ########################################
+  ### For od_ss, od_du, od_pom, od_bc, od_so4, od_ni and od_am, use the
+  ### dedicated CAMS/HAM 550-nm species AOD diagnostic instead of summing
+  ### modal/tracer optical-depth fields from gribod.
+  if (prefix == "od") {
+    oddef <- get_ham_species_od_definition(suffix)
+    if (!is.null(oddef)) {
+      return(data.frame(
+        logical_name  = logical_name,
+        csv_name      = toupper(suffix),
+        massdiag_name = oddef$short_name,
+        grib_column   = "gribod",
+        grib          = oddef$grib,
+        stringsAsFactors = FALSE
+      ))
+    }
+  }
 
   ############################
   ### 1. EXACT MODE/SPECIES ###

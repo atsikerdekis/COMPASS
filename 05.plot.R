@@ -42,7 +42,7 @@ massdiag_hours <- c(6,12,18)
 ########################
 ### VARIABLE FAMILIES ###
 ########################
-plot_types <- c("mmr","ddp","sdm","wdl","wdc","mss","mss_from_mr","ngt")
+plot_types <- c("mmr","ddp","sdm","wdl","wdc","mss","mss_from_mr","od","ngt")
 
 plot_type_title <- c(
   mmr = "Mass mixing ratio",
@@ -52,6 +52,7 @@ plot_type_title <- c(
   wdc = "Convective wet dep.",
   mss = "Column mass burden",
   mss_from_mr = "Column burden from mixing ratio",
+  od = "Optical depth",
   ngt = "Negative fixer"
 )
 
@@ -130,6 +131,7 @@ get_plot_units <- function(type) {
   if (type == "mmr") return("kg kg^-1")
   if (type %in% c("mss","mss_from_mr")) return("kg m^-2")
   if (type %in% c("ddp","sdm","wdl","wdc","ngt")) return("kg m^-2 s^-1")
+  if (type == "od") return(" ")
   " "
 }
 

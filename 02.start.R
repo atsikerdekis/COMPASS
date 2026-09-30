@@ -106,6 +106,8 @@ archive_existing_download_files <- function(
       targets <- c(
         targets,
         file.path(exp_dir,paste0("CAMS_",expname,"_forecast00to21by03_0.7x0.7_ml_",date,".nc")),
+        file.path(exp_dir,paste0("CAMS_",expname,"_forecast00to21by03_0.7x0.7_ml_rh_",date,".nc")),
+        file.path(exp_dir,paste0("CAMS_",expname,"_forecast00to21by03_0.7x0.7_ml_wat_",date,".nc")),
         file.path(exp_dir,paste0("CAMS_",expname,"_forecast00to21by03_0.7x0.7_lnsp_",date,".nc"))
       )
     }
@@ -191,6 +193,15 @@ if (runtype == "download") {
       surface_columns <- c("gribddp","gribsdm","gribwdl","gribwdc","gribmss","gribod","gribngt")
       params_sfc <- unique(expvars$grib[expvars$grib_column %in% surface_columns])
       params_sfc <- params_sfc[!is.na(params_sfc) & params_sfc != ""]
+
+      ### Species-OD support for derived optical products.
+      if (any(strip_time_aggregation(optical_variables) %in% c("od_sum_species","aod550_species"))) {
+        species_vars <- paste0("od_",get_od_species_suffixes(include_soa=TRUE))
+        species_table <- resolve_variables(exptype,species_vars)
+        extra_sfc <- unique(species_table$grib[species_table$grib_column == "gribod"])
+        extra_sfc <- extra_sfc[!is.na(extra_sfc) & extra_sfc != ""]
+        params_sfc <- unique(c(params_sfc,extra_sfc))
+      }
       params_sfc <- paste(params_sfc,collapse="/")
 
       ### Model levels required for derived RH diagnostics
@@ -198,6 +209,14 @@ if (runtype == "download") {
       if (length(rh_variables) > 0) {
         levels_ml <- unique(sapply(rh_variables,function(x) get_rh_definition(x)$model_level))
         levels_ml <- paste(sort(levels_ml),collapse="/")
+      }
+
+      ### HAM water-AOD modal diagnostics (stored on ML levels 2/3/4)
+      levels_ml_wat <- ""
+      params_ml_wat <- ""
+      if (length(wat_variables) > 0 && exptype == "HAM") {
+        levels_ml_wat <- "2/3/4"
+        params_ml_wat <- "22.210"
       }
 
       ### Surface precipitation diagnostics
@@ -243,6 +262,8 @@ if ("mec550" %in% strip_time_aggregation(optical_variables)) {
       message("---> PL parameters: ",ifelse(params_pl == "","none",params_pl))
       message("---> SFC parameters: ",ifelse(params_sfc == "","none",params_sfc))
       message("---> RH model levels: ",ifelse(levels_ml == "","none",levels_ml))
+      message("---> Water AOD ML levels: ",ifelse(levels_ml_wat == "","none",levels_ml_wat))
+      message("---> Water AOD parameters: ",ifelse(params_ml_wat == "","none",params_ml_wat))
       message("---> Precipitation parameters: ",ifelse(params_precip == "","none",params_precip))
       message("---> Optical parameters: ",ifelse(params_optics == "","none",params_optics))
       message("---> MEC burden parameters: ",ifelse(params_mec == "","none",params_mec))
@@ -261,7 +282,7 @@ if ("mec550" %in% strip_time_aggregation(optical_variables)) {
           archive_mec=params_mec != "",
           archive_columns=params_columns != "",
           archive_pl=params_pl != "",
-          archive_ml=levels_ml != ""
+          archive_ml=(levels_ml != "" || params_ml_wat != "")
         )
       }
 
@@ -368,7 +389,23 @@ if (params_columns != "") {
           JOB_err      = paste0(path_log,"download_ml_rh_",expname,"_",vdate1[d],"_",vdate2[d],".out"),
           PATH_program = paste0(path_PYTHON,"python"),
           PATH_script  = paste0(path_code,"03.download_ml.py"),
-          SCRIPT_flag  = paste(expname,expclass,vdate1[d],vdate2[d],path_data,levels_ml)
+          SCRIPT_flag  = paste(expname,expclass,vdate1[d],vdate2[d],path_data,levels_ml,"130.128/133.128","rh")
+        )
+
+      }
+
+      ############################
+      ### WATER-AOD ML DOWNLOAD ###
+      ############################
+      if (params_ml_wat != "") {
+
+        SubmitJob(
+          JOB_name     = paste0("download_ml_wat_",expname,"_",vdate1[d],"_",vdate2[d]),
+          JOB_out      = paste0(path_log,"download_ml_wat_",expname,"_",vdate1[d],"_",vdate2[d],".out"),
+          JOB_err      = paste0(path_log,"download_ml_wat_",expname,"_",vdate1[d],"_",vdate2[d],".out"),
+          PATH_program = paste0(path_PYTHON,"python"),
+          PATH_script  = paste0(path_code,"03.download_ml.py"),
+          SCRIPT_flag  = paste(expname,expclass,vdate1[d],vdate2[d],path_data,levels_ml_wat,params_ml_wat,"wat")
         )
 
       }

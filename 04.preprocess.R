@@ -204,9 +204,18 @@ l137_half_coeff <- data.frame(
 
 ### Each RH level is stored in its own ML file.
 rh_ml_file <- function(expname,date,logical_name) {
+  fnew <- paste0(path_data,expname,"/CAMS_",expname,
+                 "_forecast00to21by03_0.7x0.7_ml_rh_",date,".nc")
+  if (file.exists(fnew)) return(fnew)
   model_level <- get_rh_definition(logical_name)$model_level
+  fold <- paste0(path_data,expname,"/CAMS_",expname,
+                 "_forecast00to21by03_0.7x0.7_ml_",model_level,"_",date,".nc")
+  fold
+}
+
+wat_ml_file <- function(expname,date) {
   paste0(path_data,expname,"/CAMS_",expname,
-         "_forecast00to21by03_0.7x0.7_ml_",model_level,"_",date,".nc")
+         "_forecast00to21by03_0.7x0.7_ml_wat_",date,".nc")
 }
 
 rh_lnsp_file <- function(expname,date) {
@@ -272,13 +281,27 @@ read_relative_humidity <- function(expname,date,logical_name) {
   if (!q_name %in% names(nc_ml$var)) stop("Specific humidity variable ",q_name," not found in ",file_ml)
   if (!lnsp_name %in% names(nc_lnsp$var)) stop("lnsp variable ",lnsp_name," not found in ",file_lnsp)
 
-  T <- drop(ncvar_get(nc_ml,T_name))
-  q <- drop(ncvar_get(nc_ml,q_name))
+  T_raw <- ncvar_get(nc_ml,T_name)
+  q_raw <- ncvar_get(nc_ml,q_name)
   lnsp <- drop(ncvar_get(nc_lnsp,lnsp_name))
+
+  extract_ml <- function(arr,varname) {
+    d <- dim(arr)
+    if (length(d) == 3) return(drop(arr))
+    if (length(d) != 4) stop("Unexpected dimensions for ",varname," in ",file_ml,": ",paste(d,collapse="x"))
+    levs <- if ("level" %in% names(nc_ml$dim) || "level" %in% names(nc_ml$var)) ncvar_get(nc_ml,"level") else NULL
+    if (is.null(levs)) stop("Level coordinate missing in ",file_ml)
+    ilev <- which(levs == model_level)
+    if (length(ilev) != 1) stop("Model level ",model_level," not found in ",file_ml)
+    drop(arr[,,ilev,])
+  }
+
+  T <- extract_ml(T_raw,T_name)
+  q <- extract_ml(q_raw,q_name)
 
   if (length(dim(T)) != 3 || length(dim(q)) != 3)
     stop("Unexpected T/q dimensions in ",file_ml,
-         ". Expected lon x lat x time for the single downloaded ML. T=",
+         ". Expected lon x lat x time after selecting the target ML. T=",
          paste(dim(T),collapse="x")," q=",paste(dim(q),collapse="x"))
 
   if (length(dim(lnsp)) != 3)
@@ -331,12 +354,68 @@ read_total_aerosol_burden <- function(expname,date) {
   }
   drop(out)
 }
+
+resolve_species_od_table <- function(exptype,include_soa=TRUE) {
+  vars <- paste0("od_",get_od_species_suffixes(include_soa=include_soa))
+  if (exptype == "HAM") return(resolve_variables("HAM",vars))
+  if (exptype == "AER") return(resolve_variables("AER",vars))
+  stop("Unsupported experiment type for species OD: ",exptype)
+}
+
+read_species_od_components <- function(expname,date,exptype) {
+  table <- resolve_species_od_table(exptype,include_soa=TRUE)
+  out <- list()
+  for (suffix in get_od_species_suffixes(include_soa=TRUE)) {
+    lname <- paste0("od_",suffix)
+    rows <- table[table$logical_name == lname,,drop=FALSE]
+    if (nrow(rows) == 0) next
+    file <- variable_file(lname,table,expname,date)
+    out[[suffix]] <- read_variable(file,exptype,lname,table)
+  }
+  out
+}
+
+read_species_od_sum <- function(expname,date,exptype) {
+  comps <- read_species_od_components(expname,date,exptype)
+  if (length(comps) == 0) stop("No species OD components found for ",expname)
+  out <- NULL
+  for (nm in names(comps)) {
+    if (is.null(out)) out <- comps[[nm]] else out <- out + comps[[nm]]
+  }
+  out
+}
+
+read_water_aod <- function(expname,date,logical_name) {
+  base <- strip_time_aggregation(logical_name)
+  file <- wat_ml_file(expname,date)
+  if (!file.exists(file)) stop("Water-AOD ML file not found: ",file)
+  nc <- nc_open(file)
+  on.exit(nc_close(nc))
+  varname <- grib_to_ncname("22.210")
+  if (!varname %in% names(nc$var)) stop("NetCDF variable ",varname," not found in ",file)
+  raw <- ncvar_get(nc,varname)
+  d <- dim(raw)
+  if (length(d) != 4) stop("Unexpected water-AOD dimensions in ",file,": ",paste(d,collapse="x"))
+  levs <- if ("level" %in% names(nc$dim) || "level" %in% names(nc$var)) ncvar_get(nc,"level") else c(2,3,4)
+  pick_level <- function(level_value) {
+    ilev <- which(levs == level_value)
+    if (length(ilev) != 1) stop("Level ",level_value," not found in ",file)
+    drop(raw[,,ilev,])
+  }
+  if (base == "od_wat_ks") return(pick_level(2))
+  if (base == "od_wat_as") return(pick_level(3))
+  if (base == "od_wat_cs") return(pick_level(4))
+  if (base == "od_wat") return(pick_level(2) + pick_level(3) + pick_level(4))
+  stop("Unsupported water variable: ",logical_name)
+}
 read_optical_property <- function(expname,date,logical_name) {
   logical_name <- strip_time_aggregation(logical_name)
-  if (logical_name == "aod550") return(read_direct_optical(expname,date,"207.210"))
+  exptype <- if (exists("exptype1") && expname == expname1) exptype1 else if (exists("exptype2") && expname == expname2) exptype2 else NA
+  if (logical_name %in% c("aod550","aod550_species")) return(read_direct_optical(expname,date,"207.210"))
   if (logical_name == "aod865") return(read_direct_optical(expname,date,"215.210"))
   if (logical_name == "aaod550") return(read_direct_optical(expname,date,"104.215"))
   if (logical_name == "ssa550") return(read_direct_optical(expname,date,"140.215"))
+  if (logical_name == "od_sum_species") return(read_species_od_sum(expname,date,exptype))
   if (logical_name == "ae550to865") {
     a1 <- read_direct_optical(expname,date,"207.210")
     a2 <- read_direct_optical(expname,date,"215.210")

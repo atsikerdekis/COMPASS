@@ -9,7 +9,7 @@ exptype2  <- "HAM"
 expclass2 <- "rd"
 ### Period
 sDate   <- "20190101"
-eDate   <- "20190101"
+eDate   <- "20190103"
 ### Runtype
 runtype <- "download" # plot | download
 ### Other
@@ -34,7 +34,14 @@ variables <- c(
   "od_so4",
   "od_ni",
   "od_am",
-  "od_soa"
+  "od_soa",
+  "wat",
+  "aod550",
+  "od_sum_species",
+  "aod550_species",
+  "wat_ks",
+  "wat_as",
+  "wat_cs"
 )
 
 #variables <- c("precip_total","precip_convective","precip_large_scale")

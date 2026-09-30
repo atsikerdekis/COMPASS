@@ -150,8 +150,8 @@ get_precip_definition <- function(logical_name) {
 ### OPTICAL DEFINITIONS ###
 ##########################
 optical_definitions <- data.frame(
-  logical_name = c("aod550","aod865","ae550to865","aaod550","ssa550","mec550"),
-  title        = c("Aerosol optical depth @ 550 nm","Aerosol optical depth @ 865 nm","Angstrom exponent 550-865 nm","Absorption aerosol optical depth @ 550 nm","Single-scattering albedo @ 550 nm","Mass extinction coefficient @ 550 nm"),
+  logical_name = c("aod550","aod865","ae550to865","aaod550","ssa550","mec550","od_sum_species","aod550_species"),
+  title        = c("Aerosol optical depth @ 550 nm","Aerosol optical depth @ 865 nm","Angstrom exponent 550-865 nm","Absorption aerosol optical depth @ 550 nm","Single-scattering albedo @ 550 nm","Mass extinction coefficient @ 550 nm","Sum of species optical depth @ 550 nm","AOD550 with species time series"),
   stringsAsFactors = FALSE
 )
 optical_supported <- optical_definitions$logical_name
@@ -166,7 +166,7 @@ get_optical_required_gribs <- function(logical_names) {
   gribs <- character(0)
 
   ### AOD550 is also needed for representative SSA and MEC maps.
-  if (any(logical_names %in% c("aod550","ae550to865","ssa550","mec550")))
+  if (any(logical_names %in% c("aod550","ae550to865","ssa550","mec550","aod550_species")))
     gribs <- c(gribs,"207.210")
 
   if (any(logical_names %in% c("aod865","ae550to865")))
@@ -201,6 +201,32 @@ ham_species_od_definitions <- data.frame(
 get_ham_species_od_definition <- function(suffix) {
   x <- ham_species_od_definitions[ham_species_od_definitions$suffix == suffix,,drop=FALSE]
   if (nrow(x) != 1) return(NULL)
+  x
+}
+
+### Common species used by derived species-AOD diagnostics.
+### Kept here because both download setup (02.start.R) and plotting use it.
+get_od_species_suffixes <- function(include_soa=TRUE) {
+  x <- c("ss","du","pom","bc","so4","ni","am")
+  if (include_soa) x <- c(x,"soa")
+  x
+}
+
+
+############################
+### HAM WATER DEFINITIONS ###
+############################
+wat_definitions <- data.frame(
+  logical_name = c("od_wat_ks","od_wat_as","od_wat_cs","od_wat"),
+  levelist     = c("2","3","4","2/3/4"),
+  title        = c("Water AOD KS","Water AOD AS","Water AOD CS","Water AOD total"),
+  stringsAsFactors = FALSE
+)
+wat_supported <- wat_definitions$logical_name
+get_wat_definition <- function(logical_name) {
+  logical_name <- strip_time_aggregation(logical_name)
+  x <- wat_definitions[wat_definitions$logical_name == logical_name,,drop=FALSE]
+  if (nrow(x) != 1) stop("Unsupported water variable: ",logical_name)
   x
 }
 
@@ -260,6 +286,15 @@ if (length(invalid_rh) > 0) {
 
 rh_variables <- variables_requested[variable_bases %in% rh_supported]
 
+invalid_wat <- variables_requested[
+  startsWith(variable_bases,"od_wat") & !variable_bases %in% wat_supported
+]
+if (length(invalid_wat) > 0) {
+  stop("Unsupported water variable(s): ",paste(invalid_wat,collapse=", "),
+       ". Available water variables: ",paste(wat_supported,collapse=", "))
+}
+wat_variables <- variables_requested[variable_bases %in% wat_supported]
+
 invalid_precip <- variables_requested[
   startsWith(variable_bases,"precip") & !variable_bases %in% precip_supported
 ]
@@ -277,7 +312,7 @@ column_variables <- variables_requested[variable_bases %in% column_supported]
 lifetime_variables <- variables_requested[startsWith(variable_bases,"lifetime_")]
 
 special_variables <- unique(c(
-  rh_variables,precip_variables,optical_variables,column_variables,lifetime_variables
+  rh_variables,wat_variables,precip_variables,optical_variables,column_variables,lifetime_variables
 ))
 aerosol_variables_requested <- variables_requested[!variables_requested %in% special_variables]
 
@@ -603,6 +638,13 @@ if (length(rh_variables) > 0) {
     paste0(x," (ML",z$model_level,", ~",z$approx_height_m," m)")
   })
   message("---> Relative humidity: ",paste(rh_info,collapse=", "))
+}
+if (length(wat_variables) > 0) {
+  wat_info <- sapply(wat_variables,function(x) {
+    z <- get_wat_definition(x)
+    paste0(x," (210022, levels ",z$levelist,")")
+  })
+  message("---> Water AOD: ",paste(wat_info,collapse=", "))
 }
 if (length(precip_variables) > 0) {
   precip_info <- sapply(precip_variables,function(x) {

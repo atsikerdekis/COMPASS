@@ -161,6 +161,29 @@ get_optical_definition <- function(logical_name) {
   if (nrow(x) != 1) stop("Unsupported optical variable: ",logical_name)
   x
 }
+
+#############################################
+### MULTI-PANEL SPECIES MAP DEFINITIONS ###
+#############################################
+panel_species_definitions <- data.frame(
+  logical_name = c("aod_per_species","aodratio_per_species",
+                   "mass_per_species","massratio_per_species",
+                   "mec_per_species"),
+  title = c("AOD per species",
+            "Species AOD / total AOD550",
+            "Mass burden per species",
+            "Species mass / total mass burden",
+            "Mass extinction coefficient per species"),
+  stringsAsFactors = FALSE
+)
+panel_species_supported <- panel_species_definitions$logical_name
+get_panel_species_definition <- function(logical_name) {
+  logical_name <- tolower(strip_time_aggregation(logical_name))
+  x <- panel_species_definitions[panel_species_definitions$logical_name == logical_name,,drop=FALSE]
+  if (nrow(x) != 1) stop("Unsupported multi-panel species variable: ",logical_name)
+  x
+}
+
 get_optical_required_gribs <- function(logical_names) {
   logical_names <- strip_time_aggregation(logical_names)
   gribs <- character(0)
@@ -204,20 +227,12 @@ get_ham_species_od_definition <- function(suffix) {
   x
 }
 
-### Common species used by derived species-AOD diagnostics.
-### Kept here because both download setup (02.start.R) and plotting use it.
-get_od_species_suffixes <- function(include_soa=TRUE) {
-  x <- c("ss","du","pom","bc","so4","ni","am")
-  if (include_soa) x <- c(x,"soa")
-  x
-}
-
 
 ############################
 ### HAM WATER DEFINITIONS ###
 ############################
 wat_definitions <- data.frame(
-  logical_name = c("od_wat_ks","od_wat_as","od_wat_cs","od_wat"),
+  logical_name = c("wat_ks","wat_as","wat_cs","wat"),
   levelist     = c("2","3","4","2/3/4"),
   title        = c("Water AOD KS","Water AOD AS","Water AOD CS","Water AOD total"),
   stringsAsFactors = FALSE
@@ -270,11 +285,21 @@ get_time_aggregation <- function(x) {
   out
 }
 
+normalize_special_variable_names <- function(x) {
+  agg <- ifelse(grepl("_daily$",x), "_daily",
+                ifelse(grepl("_monthly$",x), "_monthly", ""))
+  base <- strip_time_aggregation(x)
+  base_low <- tolower(base)
+  if (base_low %in% panel_species_supported) return(paste0(base_low,agg))
+  x
+}
+
 ######################################
 ### EXPAND COMPOSITE DEP VARIABLES ###
 ######################################
-variables_requested <- variables
+variables_requested <- vapply(variables,normalize_special_variable_names,character(1))
 variable_bases <- strip_time_aggregation(variables_requested)
+variable_bases_lower <- tolower(variable_bases)
 
 invalid_rh <- variables_requested[
   startsWith(variable_bases,"rh") & !variable_bases %in% rh_supported
@@ -287,7 +312,7 @@ if (length(invalid_rh) > 0) {
 rh_variables <- variables_requested[variable_bases %in% rh_supported]
 
 invalid_wat <- variables_requested[
-  startsWith(variable_bases,"od_wat") & !variable_bases %in% wat_supported
+  startsWith(variable_bases,"wat") & !variable_bases %in% wat_supported
 ]
 if (length(invalid_wat) > 0) {
   stop("Unsupported water variable(s): ",paste(invalid_wat,collapse=", "),
@@ -305,6 +330,7 @@ if (length(invalid_precip) > 0) {
 
 precip_variables <- variables_requested[variable_bases %in% precip_supported]
 optical_variables <- variables_requested[variable_bases %in% optical_supported]
+panel_species_variables <- variables_requested[variable_bases_lower %in% panel_species_supported]
 column_variables <- variables_requested[variable_bases %in% column_supported]
 
 ### Standalone deposition-lifetime diagnostics.
@@ -312,7 +338,8 @@ column_variables <- variables_requested[variable_bases %in% column_supported]
 lifetime_variables <- variables_requested[startsWith(variable_bases,"lifetime_")]
 
 special_variables <- unique(c(
-  rh_variables,wat_variables,precip_variables,optical_variables,column_variables,lifetime_variables
+  rh_variables,wat_variables,precip_variables,optical_variables,panel_species_variables,
+  column_variables,lifetime_variables
 ))
 aerosol_variables_requested <- variables_requested[!variables_requested %in% special_variables]
 
@@ -655,6 +682,9 @@ if (length(precip_variables) > 0) {
 }
 if (length(optical_variables) > 0) {
   message("---> Optical properties: ",paste(optical_variables,collapse=", "))
+}
+if (length(panel_species_variables) > 0) {
+  message("---> Multi-panel species maps: ",paste(panel_species_variables,collapse=", "))
 }
 if (length(column_variables) > 0) {
   column_info <- sapply(column_variables,function(x) {

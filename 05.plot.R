@@ -62,6 +62,16 @@ requested_individual_variables <- variables_requested[!startsWith(variables_requ
 optical_plot_variables <- if (exists("optical_variables")) optical_variables else character(0)
 column_plot_variables <- if (exists("column_variables")) column_variables else character(0)
 wat_plot_variables <- if (exists("wat_variables")) wat_variables else character(0)
+panel_species_plot_variables <- if (exists("panel_species_variables")) panel_species_variables else character(0)
+
+ts_panel_mai <- c(1.55,1.60,0.05,0.18)
+ts_xlabel_line <- 2.25
+ts_ylabel_line <- 3.35
+ts_xlabel_cex <- 2.1
+ts_ylabel_cex <- 2.1
+ts_axis_cex <- 1.7
+map_ylabel_cex <- 3.4
+map_title_cex <- 1.25
 
 ########################
 ### HELPER FUNCTIONS ###
@@ -187,12 +197,12 @@ timeseries_axis_indices <- function(tt,nmax=7) {
   unique(round(seq(1,n,length.out=nmax)))
 }
 
-add_mean_square <- function(values,col,cex=3.0) {
+add_mean_square <- function(values,col,cex=3.8) {
   m <- mean(values,na.rm=TRUE)
   if (!is.finite(m)) return(invisible(NULL))
   usr <- par("usr")
-  xmean <- usr[1] + 0.012*(usr[2]-usr[1])
-  points(xmean,m,pch=15,cex=cex*1.22,col="black",xpd=FALSE)
+  xmean <- usr[1] + 0.018*(usr[2]-usr[1])
+  points(xmean,m,pch=15,cex=cex*1.18,col="black",xpd=FALSE)
   points(xmean,m,pch=15,cex=cex,col=col,xpd=FALSE)
 }
 
@@ -232,6 +242,58 @@ read_lifetime_components <- function(expname,exptype,suffix,variable_table) {
     nt=mss_data$nt,
     fluxes=available_fluxes
   )
+}
+
+
+get_panel_species_label <- function(x) {
+  switch(x,
+         total = "TOTAL",
+         du = "DU",
+         ss = "SS",
+         pom = "POM",
+         soa = "SOA",
+         bc = "BC",
+         so4 = "SO4",
+         ni = "NI",
+         am = "AM",
+         wat = "WAT",
+         toupper(x))
+}
+
+plot_species_map_grid <- function(field_list, expname, exptype, panel_name, units=" ") {
+  llfile <- if (panel_name %in% c("mec_per_species","mass_per_species","massratio_per_species","aod_per_species","aodratio_per_species")) NULL else NULL
+  first_key <- names(field_list)[1]
+  title_text <- get_panel_species_definition(panel_name)$title
+  plot_dir <- make_plot_dir("optics")
+  file_out <- paste0(plot_dir, "Panel_", panel_name, "_", expname, region_file_tag, "_", sDate, "-", eDate, ".png")
+  dpi <- 300
+  png(file_out, width=11.8*dpi, height=12.0*dpi)
+  layout(matrix(c(1,1,1,2,3,4,5,6,7,8,9,10), nrow=4, byrow=TRUE), heights=c(0.24,1,1,1))
+  par(mai=c(0,0,0,0)); plot.new(); text(0.5,0.5,paste0("Experiment: ",expname," (",exptype,")   |   Type: ",title_text,region_title,"   |   Period: ",sDate,"-",eDate), col="grey40", cex=2.4, family="Century Gothic"); abline(h=c(0,1),col="grey50",lwd=2)
+  for (nm in names(field_list)) {
+    field_value <- field_list[[nm]]
+    if (regional_mode) field_value <- mask_region_field(field_value, field_lon, field_lat, region_box)
+    local_units <- units
+    if (panel_name %in% c("aodratio_per_species","massratio_per_species") && nm != "total") {
+      br <- seq(0,1,length.out=201)
+      local_units <- "fraction"
+    } else {
+      br <- positive_breaks(field_value, 200)
+    }
+    MapNC(filename_topo="", figure_box=figure_box, field_show_box=field_show_box,
+          coastlineWorldFine_lwd=coastlineWorldFine_lwd, gridlines=gridlines,
+          projection=projection, lonmax=lonmax, lonmin=lonmin, latmax=latmax, latmin=latmin,
+          drawMapBox=regional_mode, field_value=field_value, field_lon=field_lon, field_lat=field_lat,
+          field_pallete_name="TROPOMI_NEW", field_breaks=br, field_units=local_units,
+          field_pallete_starting_alpha=100, field_show_legend=TRUE,
+          field_legend_mai_right=1.15, field_legend_nlabels=5)
+    mtext(get_panel_species_label(nm), side=3, line=0.25, cex=map_title_cex, family="Century Gothic")
+  }
+  dev.off()
+  tmp <- paste0(file_out, ".tmp.png")
+  compress(file_in=file_out, file_out=tmp)
+  file.rename(tmp, file_out)
+  message("---> Panel figure: ", file_out)
 }
 
 ############################
@@ -347,32 +409,32 @@ for (type in plot_types) {
     par(mai=c(0,0,0,0)); plot.new()
     title_text <- plot_type_title[[type]]
     if (type == "mmr") title_text <- paste0(title_text," @ ",plot_level," hPa")
-    par(mai=c(0,0,0,0)); plot.new(); text(0.5,0.5,title_text,col="grey20",cex=5,family="Century Gothic",srt=90)
+    par(mai=c(0,0,0,0)); plot.new(); text(0.5,0.5,title_text,col="grey20",cex=map_ylabel_cex,family="Century Gothic",srt=90)
 
     MapNC(filename_topo="",figure_box=figure_box,field_show_box=field_show_box,coastlineWorldFine_lwd=coastlineWorldFine_lwd,gridlines=gridlines,projection=projection,lonmax=lonmax,lonmin=lonmin,latmax=latmax,latmin=latmin,drawMapBox=regional_mode,field_value=field_plot1,field_lon=field_lon,field_lat=field_lat,field_pallete_name="TROPOMI_NEW",field_breaks=field_breaks,field_units=units,field_pallete_starting_alpha=100,field_show_legend=FALSE)
     MapNC(filename_topo="",figure_box=figure_box,field_show_box=field_show_box,coastlineWorldFine_lwd=coastlineWorldFine_lwd,gridlines=gridlines,projection=projection,lonmax=lonmax,lonmin=lonmin,latmax=latmax,latmin=latmin,drawMapBox=regional_mode,field_value=field_plot2,field_lon=field_lon,field_lat=field_lat,field_pallete_name="TROPOMI_NEW",field_breaks=field_breaks,field_units=units,field_pallete_starting_alpha=100,field_show_legend=TRUE,field_legend_mai_right=1.8,field_legend_nlabels=7)
     MapNC(filename_topo="",figure_box=figure_box,field_show_box=field_show_box,coastlineWorldFine_lwd=coastlineWorldFine_lwd,gridlines=gridlines,projection=projection,lonmax=lonmax,lonmin=lonmin,latmax=latmax,latmin=latmin,drawMapBox=regional_mode,field_value=field_plot2-field_plot1,field_lon=field_lon,field_lat=field_lat,field_pallete_name="MNMB",field_breaks=field_breaks_diff,field_units=units,field_pallete_starting_alpha=100,field_show_legend=TRUE,field_legend_mai_right=1.8,field_legend_nlabels=7)
 
-    par(mai=c(2.8,2.9,0,0.55),family="Century Gothic")
+    par(mai=ts_panel_mai,family="Century Gothic")
     x <- seq_along(plot_tmean_tim)
     ts_values <- c(plot_tmean_var1,plot_tmean_var2)
     if (!is.null(massdiag1)) ts_values <- c(ts_values,massdiag1$value,massdiag2$value)
     yseq <- positive_axis_ticks(ts_values,n=10)
 
     plot(x,type="n",axes=FALSE,ann=FALSE,ylim=c(0,max(yseq$breaks)),yaxs="i")
-    mtext("Time",side=1,line=5.2,cex=3.5)
+    mtext("Time",side=1,line=ts_xlabel_line,cex=ts_xlabel_cex)
 
     if (type %in% c("mss","mss_from_mr"))
       mtext(if (regional_mode) paste0(region," mass (Tg)") else "Global mass (Tg)",
-            side=2,line=6.8,cex=3.5)
+            side=2,line=ts_ylabel_line,cex=ts_ylabel_cex)
 
     IDx_labels <- timeseries_axis_indices(plot_tmean_tim)
     axis(1,at=x[IDx_labels],
          labels=format(plot_tmean_tim[IDx_labels],"%Y-%m-%d"),
-         cex.axis=4,line=4,lty=0)
+         cex.axis=ts_axis_cex,line=1,lty=0)
     axis(1,at=x[IDx_labels],labels=FALSE,tck=0.01)
     axis(1,at=x[IDx_labels],labels=FALSE,tck=-0.01)
-    axis(2,at=yseq$breaks,labels=yseq$labels,las=1,cex.axis=3)
+    axis(2,at=yseq$breaks,labels=yseq$labels,las=1,cex.axis=ts_axis_cex)
 
     box(lwd=2)
     abline(h=yseq$breaks,lwd=1,col="grey")
@@ -401,8 +463,7 @@ for (type in plot_types) {
     }
 
     if (is.null(massdiag1)) {
-      legend("top",legend=c(expname1,expname2),
-             lwd=5,col=c("blue","red"),cex=3)
+      legend("top",legend=c(expname1,expname2), lwd=4,col=c("blue","red"),cex=1.7, bty="n")
     } else {
       legend("top",
              legend=c(paste0(expname1," OUTPUT"),
@@ -415,13 +476,13 @@ for (type in plot_types) {
              col=c("blue","blue","red","red"),cex=2.5,ncol=2)
     }
 
-    par(mai=c(2.8,2.9,0,0.55),family="Century Gothic")
+    par(mai=ts_panel_mai,family="Century Gothic")
     yseq <- positive_axis_ticks(c(dhourmean_var1,dhourmean_var2),n=10)
     plot(1:8,type="n",axes=FALSE,ann=FALSE,ylim=c(0,max(yseq$breaks)),yaxs="i")
-    mtext("Time (3 hourly UTC)",side=1,line=12,cex=3.5)
-    axis(1,at=1:8,labels=c("00","03","06","09","12","15","18","21"),cex.axis=4,line=4,lty=0)
+    mtext("Time (3 hourly UTC)",side=1,line=ts_xlabel_line,cex=ts_xlabel_cex)
+    axis(1,at=1:8,labels=c("00","03","06","09","12","15","18","21"),cex.axis=ts_axis_cex,line=1,lty=0)
     axis(1,at=1:8,labels=FALSE,tck=0.01); axis(1,at=1:8,labels=FALSE,tck=-0.01)
-    axis(2,at=yseq$breaks,labels=yseq$labels,las=1,cex.axis=3)
+    axis(2,at=yseq$breaks,labels=yseq$labels,las=1,cex.axis=ts_axis_cex)
     box(lwd=2); abline(h=yseq$breaks,lwd=1,col="grey"); abline(v=1:8,lwd=1,col="grey")
     lines(1:8,dhourmean_var1,lwd=5,col="blue")
     points(1:8,dhourmean_var1,pch=19,cex=1.8,col="blue")
@@ -555,7 +616,7 @@ if (length(rh_variables) > 0) {
     par(mai=c(0,0,0,0))
     plot.new()
     text(0.5,0.5,paste0("Relative Humidity (",rh_height_label(logical_name),")"),
-         col="grey20",cex=5,family="Century Gothic",srt=90)
+         col="grey20",cex=map_ylabel_cex,family="Century Gothic",srt=90)
 
     MapNC(
       filename_topo="",figure_box=figure_box,field_show_box=field_show_box,
@@ -590,19 +651,19 @@ if (length(rh_variables) > 0) {
     )
 
     ### Time series
-    par(mai=c(2.8,2.9,0,0.55),family="Century Gothic")
+    par(mai=ts_panel_mai,family="Century Gothic")
     x <- seq_along(plot_tmean_tim)
     plot(x,type="n",axes=FALSE,ann=FALSE,ylim=c(0,100),yaxs="i")
-    mtext("Time",side=1,line=5.2,cex=3.5)
-    mtext("Relative humidity (%)",side=2,line=6.8,cex=3.5)
+    mtext("Time",side=1,line=ts_xlabel_line,cex=ts_xlabel_cex)
+    mtext("Relative humidity (%)",side=2,line=ts_ylabel_line,cex=ts_ylabel_cex)
 
     IDx_labels <- timeseries_axis_indices(plot_tmean_tim)
     axis(1,at=x[IDx_labels],
          labels=format(plot_tmean_tim[IDx_labels],"%Y-%m-%d"),
-         cex.axis=4,line=4,lty=0)
+         cex.axis=ts_axis_cex,line=1,lty=0)
     axis(1,at=x[IDx_labels],labels=FALSE,tck=0.01)
     axis(1,at=x[IDx_labels],labels=FALSE,tck=-0.01)
-    axis(2,at=seq(0,100,10),labels=seq(0,100,10),las=1,cex.axis=3)
+    axis(2,at=seq(0,100,10),labels=seq(0,100,10),las=1,cex.axis=ts_axis_cex)
 
     box(lwd=2)
     abline(h=seq(0,100,10),lwd=1,col="grey")
@@ -617,15 +678,15 @@ if (length(rh_variables) > 0) {
     legend("top",legend=c(expname1,expname2),lwd=5,col=c("blue","red"),cex=3)
 
     ### Diurnal cycle
-    par(mai=c(2.8,2.9,0,0.55),family="Century Gothic")
+    par(mai=ts_panel_mai,family="Century Gothic")
     plot(1:8,type="n",axes=FALSE,ann=FALSE,ylim=c(0,100),yaxs="i")
-    mtext("Time (3 hourly UTC)",side=1,line=12,cex=3.5)
-    mtext("Relative humidity (%)",side=2,line=6.8,cex=3.5)
+    mtext("Time (3 hourly UTC)",side=1,line=ts_xlabel_line,cex=ts_xlabel_cex)
+    mtext("Relative humidity (%)",side=2,line=ts_ylabel_line,cex=ts_ylabel_cex)
 
-    axis(1,at=1:8,labels=c("00","03","06","09","12","15","18","21"),cex.axis=4,line=4,lty=0)
+    axis(1,at=1:8,labels=c("00","03","06","09","12","15","18","21"),cex.axis=ts_axis_cex,line=1,lty=0)
     axis(1,at=1:8,labels=FALSE,tck=0.01)
     axis(1,at=1:8,labels=FALSE,tck=-0.01)
-    axis(2,at=seq(0,100,10),labels=seq(0,100,10),las=1,cex.axis=3)
+    axis(2,at=seq(0,100,10),labels=seq(0,100,10),las=1,cex.axis=ts_axis_cex)
 
     box(lwd=2)
     abline(h=seq(0,100,10),lwd=1,col="grey")
@@ -719,11 +780,11 @@ if (length(optical_plot_variables) > 0) {
     layout(mat=matrix(c(1,1,1,1,1,1,2:13,14,14,14,14,15,15),4,6,byrow=TRUE),widths=c(0.2,3.9,3.9,0.8,3.9,0.8),heights=c(0.23,0.15,2,2.5))
     par(mai=c(0,0,0,0)); plot.new(); text(0.5,0.5,paste0("Experiments: ",expname1," VS ",expname2,"   |   Type: ",get_optical_definition(logical_name)$title,region_title,"   |   Period: ",sDate,"-",eDate),col="grey50",cex=6,family="Century Gothic"); abline(h=c(0,1),col="grey50",lwd=3)
     par(mai=c(0,0,0,0)); plot.new(); par(mai=c(0,0,0,0)); plot.new(); text(.5,.5,paste0(expname1," (",exptype1,")"),cex=4.5,family="Century Gothic")
-    par(mai=c(0,0,0,0)); plot.new(); text(.5,.5,paste0(expname2," (",exptype2,")"),cex=4.5,family="Century Gothic"); par(mai=c(0,0,0,0)); plot.new(); par(mai=c(0,0,0,0)); plot.new(); text(.5,.5,paste0(expname2," - ",expname1),cex=4.5,family="Century Gothic"); par(mai=c(0,0,0,0)); plot.new(); par(mai=c(0,0,0,0)); plot.new(); text(.5,.5,get_optical_definition(logical_name)$title,cex=5,family="Century Gothic",srt=90)
+    par(mai=c(0,0,0,0)); plot.new(); text(.5,.5,paste0(expname2," (",exptype2,")"),cex=4.5,family="Century Gothic"); par(mai=c(0,0,0,0)); plot.new(); par(mai=c(0,0,0,0)); plot.new(); text(.5,.5,paste0(expname2," - ",expname1),cex=4.5,family="Century Gothic"); par(mai=c(0,0,0,0)); plot.new(); par(mai=c(0,0,0,0)); plot.new(); text(.5,.5,get_optical_definition(logical_name)$title,cex=map_ylabel_cex,family="Century Gothic",srt=90)
     MapNC(filename_topo="",figure_box=figure_box,field_show_box=field_show_box,coastlineWorldFine_lwd=coastlineWorldFine_lwd,gridlines=gridlines,projection=projection,lonmax=lonmax,lonmin=lonmin,latmax=latmax,latmin=latmin,drawMapBox=regional_mode,field_value=fp1,field_lon=field_lon,field_lat=field_lat,field_pallete_name="TROPOMI_NEW",field_breaks=br,field_units=units,field_pallete_starting_alpha=100,field_show_legend=FALSE)
     MapNC(filename_topo="",figure_box=figure_box,field_show_box=field_show_box,coastlineWorldFine_lwd=coastlineWorldFine_lwd,gridlines=gridlines,projection=projection,lonmax=lonmax,lonmin=lonmin,latmax=latmax,latmin=latmin,drawMapBox=regional_mode,field_value=fp2,field_lon=field_lon,field_lat=field_lat,field_pallete_name="TROPOMI_NEW",field_breaks=br,field_units=units,field_pallete_starting_alpha=100,field_show_legend=TRUE,field_legend_mai_right=1.8,field_legend_nlabels=7)
     MapNC(filename_topo="",figure_box=figure_box,field_show_box=field_show_box,coastlineWorldFine_lwd=coastlineWorldFine_lwd,gridlines=gridlines,projection=projection,lonmax=lonmax,lonmin=lonmin,latmax=latmax,latmin=latmin,drawMapBox=regional_mode,field_value=fp2-fp1,field_lon=field_lon,field_lat=field_lat,field_pallete_name="MNMB",field_breaks=brd,field_units=units,field_pallete_starting_alpha=100,field_show_legend=TRUE,field_legend_mai_right=1.8,field_legend_nlabels=7)
-    par(mai=c(2.8,2.9,0,0.55),family="Century Gothic")
+    par(mai=ts_panel_mai,family="Century Gothic")
     x <- seq_along(tt)
     species_cols <- c(total="black",ss="#1f77b4",du="#c49c0b",pom="#2ca02c",bc="#9467bd",so4="#d62728",ni="#ff7f0e",am="#17becf",soa="#e377c2")
     if (optical_base == "aod550_species") {
@@ -733,11 +794,11 @@ if (length(optical_plot_variables) > 0) {
       names(agg1) <- species_names; names(agg2) <- species_names
       yt <- axis_ticks(c(ts1,ts2,unlist(agg1),unlist(agg2)),10)
       plot(x,type="n",axes=FALSE,ann=FALSE,ylim=range(yt$breaks),yaxs="i")
-      mtext("Time",1,5.2,cex=3.5)
-      mtext("AOD550 (total + species)",2,6.8,cex=3.5)
+      mtext("Time",1,ts_xlabel_line,cex=ts_xlabel_cex)
+      mtext("AOD550 (total + species)",2,ts_ylabel_line,cex=ts_ylabel_cex)
       idx <- timeseries_axis_indices(tt)
-      axis(1,at=x[idx],labels=format(tt[idx],"%Y-%m-%d"),cex.axis=4,line=4,lty=0)
-      axis(2,at=yt$breaks,labels=yt$labels,las=1,cex.axis=3)
+      axis(1,at=x[idx],labels=format(tt[idx],"%Y-%m-%d"),cex.axis=ts_axis_cex,line=1,lty=0)
+      axis(2,at=yt$breaks,labels=yt$labels,las=1,cex.axis=ts_axis_cex)
       box(); abline(h=yt$breaks,col="grey")
       lines(x,ts1,lwd=5,col=species_cols["total"],lty=1); points(x,ts1,pch=19,cex=1.8,col=species_cols["total"])
       lines(x,ts2,lwd=5,col=species_cols["total"],lty=2); points(x,ts2,pch=19,cex=1.8,col=species_cols["total"])
@@ -754,12 +815,12 @@ if (length(optical_plot_variables) > 0) {
         species_dc2[[s]] <- sapply(hrs,function(h) mean(species_ts2[[s]][hr==h],na.rm=TRUE))
       }
       yd <- axis_ticks(c(dc1,dc2,unlist(species_dc1),unlist(species_dc2)),10)
-      par(mai=c(2.8,2.9,0,0.55),family="Century Gothic")
+      par(mai=ts_panel_mai,family="Century Gothic")
       plot(1:8,type="n",axes=FALSE,ann=FALSE,ylim=range(yd$breaks),yaxs="i")
-      mtext("Time (3 hourly UTC)",1,5.2,cex=3.5)
-      mtext("AOD550 (total + species)",2,6.8,cex=3.5)
-      axis(1,at=1:8,labels=sprintf("%02d",hrs),cex.axis=4,line=4,lty=0)
-      axis(2,at=yd$breaks,labels=yd$labels,las=1,cex.axis=3)
+      mtext("Time (3 hourly UTC)",1,ts_xlabel_line,cex=ts_xlabel_cex)
+      mtext("AOD550 (total + species)",2,ts_ylabel_line,cex=ts_ylabel_cex)
+      axis(1,at=1:8,labels=sprintf("%02d",hrs),cex.axis=ts_axis_cex,line=1,lty=0)
+      axis(2,at=yd$breaks,labels=yd$labels,las=1,cex.axis=ts_axis_cex)
       box(); abline(h=yd$breaks,col="grey")
       lines(1:8,dc1,lwd=5,col=species_cols["total"],lty=1); points(1:8,dc1,pch=19,cex=1.8,col=species_cols["total"])
       lines(1:8,dc2,lwd=5,col=species_cols["total"],lty=2); points(1:8,dc2,pch=19,cex=1.8,col=species_cols["total"])
@@ -771,11 +832,11 @@ if (length(optical_plot_variables) > 0) {
     } else {
       yt <- axis_ticks(c(ts1,ts2),10)
       plot(x,type="n",axes=FALSE,ann=FALSE,ylim=range(yt$breaks),yaxs="i")
-      mtext("Time",1,5.2,cex=3.5)
-      mtext(get_optical_definition(logical_name)$title,2,6.8,cex=3.5)
+      mtext("Time",1,ts_xlabel_line,cex=ts_xlabel_cex)
+      mtext(get_optical_definition(logical_name)$title,2,ts_ylabel_line,cex=ts_ylabel_cex)
       idx <- timeseries_axis_indices(tt)
-      axis(1,at=x[idx],labels=format(tt[idx],"%Y-%m-%d"),cex.axis=4,line=4,lty=0)
-      axis(2,at=yt$breaks,labels=yt$labels,las=1,cex.axis=3)
+      axis(1,at=x[idx],labels=format(tt[idx],"%Y-%m-%d"),cex.axis=ts_axis_cex,line=1,lty=0)
+      axis(2,at=yt$breaks,labels=yt$labels,las=1,cex.axis=ts_axis_cex)
       box(); abline(h=yt$breaks,col="grey")
       lines(x,ts1,lwd=5,col="blue")
       points(x,ts1,pch=19,cex=1.8,col="blue")
@@ -783,21 +844,50 @@ if (length(optical_plot_variables) > 0) {
       points(x,ts2,pch=19,cex=1.8,col="red")
       add_mean_square(ts1,"blue")
       add_mean_square(ts2,"red")
-      legend("top",c(expname1,expname2),lwd=5,col=c("blue","red"),cex=3)
-      par(mai=c(2.8,2.9,0,0.55),family="Century Gothic"); yd <- axis_ticks(c(dc1,dc2),10); plot(1:8,type="n",axes=FALSE,ann=FALSE,ylim=range(yd$breaks),yaxs="i"); mtext("Time (3 hourly UTC)",1,5.2,cex=3.5); mtext(get_optical_definition(logical_name)$title,2,6.8,cex=3.5); axis(1,at=1:8,labels=sprintf("%02d",hrs),cex.axis=4,line=4,lty=0); axis(2,at=yd$breaks,labels=yd$labels,las=1,cex.axis=3); box(); abline(h=yd$breaks,col="grey"); lines(1:8,dc1,lwd=5,col="blue"); points(1:8,dc1,pch=19,cex=1.8,col="blue"); lines(1:8,dc2,lwd=5,col="red"); points(1:8,dc2,pch=19,cex=1.8,col="red"); legend("top",c(expname1,expname2),lwd=5,col=c("blue","red"),cex=3)
+      legend("top",c(expname1,expname2),lwd=4,col=c("blue","red"),cex=1.7,bty="n")
+      par(mai=ts_panel_mai,family="Century Gothic"); yd <- axis_ticks(c(dc1,dc2),10); plot(1:8,type="n",axes=FALSE,ann=FALSE,ylim=range(yd$breaks),yaxs="i"); mtext("Time (3 hourly UTC)",1,ts_xlabel_line,cex=ts_xlabel_cex); mtext(get_optical_definition(logical_name)$title,2,ts_ylabel_line,cex=ts_ylabel_cex); axis(1,at=1:8,labels=sprintf("%02d",hrs),cex.axis=ts_axis_cex,line=1,lty=0); axis(2,at=yd$breaks,labels=yd$labels,las=1,cex.axis=ts_axis_cex); box(); abline(h=yd$breaks,col="grey"); lines(1:8,dc1,lwd=5,col="blue"); points(1:8,dc1,pch=19,cex=1.8,col="blue"); lines(1:8,dc2,lwd=5,col="red"); points(1:8,dc2,pch=19,cex=1.8,col="red"); legend("top",c(expname1,expname2),lwd=4,col=c("blue","red"),cex=1.7,bty="n")
     }
     dev.off(); tmp <- paste0(file_out,".tmp.png"); compress(file_in=file_out,file_out=tmp); file.rename(tmp,file_out)
   }
 }
 
 
+
+############################
+### MULTI-PANEL SPECIES MAPS ###
+############################
+if (length(panel_species_plot_variables) > 0) {
+  for (logical_name in panel_species_plot_variables) {
+    panel_base <- tolower(strip_time_aggregation(logical_name))
+    message("---> Plotting ", logical_name, if (regional_mode) paste0(" for ", region) else "")
+
+    ref_name <- if (panel_base %in% c("mass_per_species","massratio_per_species")) "mss_ss" else "od_ss"
+    ref_table1 <- if (panel_base %in% c("mass_per_species","massratio_per_species","mec_per_species")) variables_exp1 else variables_exp1
+    ref_file <- tryCatch(variable_file(ref_name, variables_exp1, expname1, seqDate[1]), error=function(e) NA)
+    if (!is.character(ref_file) || !file.exists(ref_file)) {
+      ref_file <- if (panel_base %in% c("aod_per_species","aodratio_per_species","mec_per_species")) optics_file(expname1, seqDate[1]) else variable_file("mss_ss", variables_exp1, expname1, seqDate[1])
+    }
+    ll <- read_lon_lat(ref_file)
+    field_lon <- ll$lon; field_lat <- ll$lat
+
+    maps1 <- build_panel_species_maps(expname1, exptype1, seqDate, panel_base)
+    maps2 <- build_panel_species_maps(expname2, exptype2, seqDate, panel_base)
+
+    units <- " "
+    if (panel_base %in% c("mass_per_species","massratio_per_species")) units <- if (panel_base == "massratio_per_species") "fraction" else "kg m^-2"
+    if (panel_base == "mec_per_species") units <- "m2 g^-1"
+
+    plot_species_map_grid(maps1, expname1, exptype1, panel_base, units=units)
+    plot_species_map_grid(maps2, expname2, exptype2, panel_base, units=units)
+  }
+}
+
 ############################
 ### WATER-AOD PLOTS ###
 ############################
 if (length(wat_plot_variables) > 0) {
-  if (exptype1 != "HAM" || exptype2 != "HAM") {
-    message("---> Skipping od_wat* plots: water AOD is currently available only for HAM/HAM comparisons.")
-  } else for (logical_name in wat_plot_variables) {
+  if (exptype1 != "HAM" || exptype2 != "HAM") stop("Water-AOD variables are currently supported only for HAM/HAM comparisons.")
+  for (logical_name in wat_plot_variables) {
     message("---> Plotting ",logical_name,if (regional_mode) paste0(" for ",region) else "")
     d1 <- list(); d2 <- list()
     for (d in seq_along(seqDate)) {
@@ -825,16 +915,16 @@ if (length(wat_plot_variables) > 0) {
     layout(mat=matrix(c(1,1,1,1,1,1,2:13,14,14,14,14,15,15),4,6,byrow=TRUE),widths=c(0.2,3.9,3.9,0.8,3.9,0.8),heights=c(0.23,0.15,2,2.5))
     par(mai=c(0,0,0,0)); plot.new(); text(0.5,0.5,paste0("Experiments: ",expname1," VS ",expname2,"   |   Type: ",get_wat_definition(logical_name)$title,region_title,"   |   Period: ",sDate,"-",eDate),col="grey50",cex=6,family="Century Gothic"); abline(h=c(0,1),col="grey50",lwd=3)
     par(mai=c(0,0,0,0)); plot.new(); par(mai=c(0,0,0,0)); plot.new(); text(.5,.5,paste0(expname1," (",exptype1,")"),cex=4.5,family="Century Gothic")
-    par(mai=c(0,0,0,0)); plot.new(); text(.5,.5,paste0(expname2," (",exptype2,")"),cex=4.5,family="Century Gothic"); par(mai=c(0,0,0,0)); plot.new(); par(mai=c(0,0,0,0)); plot.new(); text(.5,.5,paste0(expname2," - ",expname1),cex=4.5,family="Century Gothic"); par(mai=c(0,0,0,0)); plot.new(); par(mai=c(0,0,0,0)); plot.new(); text(.5,.5,get_wat_definition(logical_name)$title,cex=5,family="Century Gothic",srt=90)
+    par(mai=c(0,0,0,0)); plot.new(); text(.5,.5,paste0(expname2," (",exptype2,")"),cex=4.5,family="Century Gothic"); par(mai=c(0,0,0,0)); plot.new(); par(mai=c(0,0,0,0)); plot.new(); text(.5,.5,paste0(expname2," - ",expname1),cex=4.5,family="Century Gothic"); par(mai=c(0,0,0,0)); plot.new(); par(mai=c(0,0,0,0)); plot.new(); text(.5,.5,get_wat_definition(logical_name)$title,cex=map_ylabel_cex,family="Century Gothic",srt=90)
     MapNC(filename_topo="",figure_box=figure_box,field_show_box=field_show_box,coastlineWorldFine_lwd=coastlineWorldFine_lwd,gridlines=gridlines,projection=projection,lonmax=lonmax,lonmin=lonmin,latmax=latmax,latmin=latmin,drawMapBox=regional_mode,field_value=fp1,field_lon=field_lon,field_lat=field_lat,field_pallete_name="TROPOMI_NEW",field_breaks=br,field_units=" ",field_pallete_starting_alpha=100,field_show_legend=FALSE)
     MapNC(filename_topo="",figure_box=figure_box,field_show_box=field_show_box,coastlineWorldFine_lwd=coastlineWorldFine_lwd,gridlines=gridlines,projection=projection,lonmax=lonmax,lonmin=lonmin,latmax=latmax,latmin=latmin,drawMapBox=regional_mode,field_value=fp2,field_lon=field_lon,field_lat=field_lat,field_pallete_name="TROPOMI_NEW",field_breaks=br,field_units=" ",field_pallete_starting_alpha=100,field_show_legend=TRUE,field_legend_mai_right=1.8,field_legend_nlabels=7)
     MapNC(filename_topo="",figure_box=figure_box,field_show_box=field_show_box,coastlineWorldFine_lwd=coastlineWorldFine_lwd,gridlines=gridlines,projection=projection,lonmax=lonmax,lonmin=lonmin,latmax=latmax,latmin=latmin,drawMapBox=regional_mode,field_value=fp2-fp1,field_lon=field_lon,field_lat=field_lat,field_pallete_name="MNMB",field_breaks=brd,field_units=" ",field_pallete_starting_alpha=100,field_show_legend=TRUE,field_legend_mai_right=1.8,field_legend_nlabels=7)
-    par(mai=c(2.8,2.9,0,0.55),family="Century Gothic")
+    par(mai=ts_panel_mai,family="Century Gothic")
     x <- seq_along(tt); yt <- axis_ticks(c(ts1,ts2),10)
-    plot(x,type="n",axes=FALSE,ann=FALSE,ylim=range(yt$breaks),yaxs="i"); mtext("Time",1,5.2,cex=3.5); mtext(get_wat_definition(logical_name)$title,2,6.8,cex=3.5)
-    idx <- timeseries_axis_indices(tt); axis(1,at=x[idx],labels=format(tt[idx],"%Y-%m-%d"),cex.axis=4,line=4,lty=0); axis(2,at=yt$breaks,labels=yt$labels,las=1,cex.axis=3); box(); abline(h=yt$breaks,col="grey")
-    lines(x,ts1,lwd=5,col="blue"); points(x,ts1,pch=19,cex=1.8,col="blue"); lines(x,ts2,lwd=5,col="red"); points(x,ts2,pch=19,cex=1.8,col="red"); add_mean_square(ts1,"blue"); add_mean_square(ts2,"red"); legend("top",c(expname1,expname2),lwd=5,col=c("blue","red"),cex=3)
-    par(mai=c(2.8,2.9,0,0.55),family="Century Gothic"); yd <- axis_ticks(c(dc1,dc2),10); plot(1:8,type="n",axes=FALSE,ann=FALSE,ylim=range(yd$breaks),yaxs="i"); mtext("Time (3 hourly UTC)",1,5.2,cex=3.5); mtext(get_wat_definition(logical_name)$title,2,6.8,cex=3.5); axis(1,at=1:8,labels=sprintf("%02d",hrs),cex.axis=4,line=4,lty=0); axis(2,at=yd$breaks,labels=yd$labels,las=1,cex.axis=3); box(); abline(h=yd$breaks,col="grey"); lines(1:8,dc1,lwd=5,col="blue"); points(1:8,dc1,pch=19,cex=1.8,col="blue"); lines(1:8,dc2,lwd=5,col="red"); points(1:8,dc2,pch=19,cex=1.8,col="red"); legend("top",c(expname1,expname2),lwd=5,col=c("blue","red"),cex=3)
+    plot(x,type="n",axes=FALSE,ann=FALSE,ylim=range(yt$breaks),yaxs="i"); mtext("Time",1,ts_xlabel_line,cex=ts_xlabel_cex); mtext(get_wat_definition(logical_name)$title,2,ts_ylabel_line,cex=ts_ylabel_cex)
+    idx <- timeseries_axis_indices(tt); axis(1,at=x[idx],labels=format(tt[idx],"%Y-%m-%d"),cex.axis=ts_axis_cex,line=1,lty=0); axis(2,at=yt$breaks,labels=yt$labels,las=1,cex.axis=ts_axis_cex); box(); abline(h=yt$breaks,col="grey")
+    lines(x,ts1,lwd=5,col="blue"); points(x,ts1,pch=19,cex=1.8,col="blue"); lines(x,ts2,lwd=5,col="red"); points(x,ts2,pch=19,cex=1.8,col="red"); add_mean_square(ts1,"blue"); add_mean_square(ts2,"red"); legend("top",c(expname1,expname2),lwd=4,col=c("blue","red"),cex=1.7,bty="n")
+    par(mai=ts_panel_mai,family="Century Gothic"); yd <- axis_ticks(c(dc1,dc2),10); plot(1:8,type="n",axes=FALSE,ann=FALSE,ylim=range(yd$breaks),yaxs="i"); mtext("Time (3 hourly UTC)",1,ts_xlabel_line,cex=ts_xlabel_cex); mtext(get_wat_definition(logical_name)$title,2,ts_ylabel_line,cex=ts_ylabel_cex); axis(1,at=1:8,labels=sprintf("%02d",hrs),cex.axis=ts_axis_cex,line=1,lty=0); axis(2,at=yd$breaks,labels=yd$labels,las=1,cex.axis=ts_axis_cex); box(); abline(h=yd$breaks,col="grey"); lines(1:8,dc1,lwd=5,col="blue"); points(1:8,dc1,pch=19,cex=1.8,col="blue"); lines(1:8,dc2,lwd=5,col="red"); points(1:8,dc2,pch=19,cex=1.8,col="red"); legend("top",c(expname1,expname2),lwd=4,col=c("blue","red"),cex=1.7,bty="n")
     dev.off(); tmp <- paste0(file_out,".tmp.png"); compress(file_in=file_out,file_out=tmp); file.rename(tmp,file_out)
   }
 }
@@ -950,7 +1040,7 @@ if (length(column_plot_variables) > 0) {
     text(.5,.5,paste0(expname2," - ",expname1),cex=4.5,family="Century Gothic")
     par(mai=c(0,0,0,0)); plot.new()
     par(mai=c(0,0,0,0)); plot.new()
-    text(.5,.5,def$title,cex=5,family="Century Gothic",srt=90)
+    text(.5,.5,def$title,cex=map_ylabel_cex,family="Century Gothic",srt=90)
 
     MapNC(
       filename_topo="",figure_box=figure_box,field_show_box=field_show_box,
@@ -986,21 +1076,21 @@ if (length(column_plot_variables) > 0) {
     )
 
     ### Time series
-    par(mai=c(2.8,2.9,0,0.55),family="Century Gothic")
+    par(mai=ts_panel_mai,family="Century Gothic")
     x <- seq_along(tt)
     yt <- axis_ticks(c(ts1,ts2),10)
 
     plot(x,type="n",axes=FALSE,ann=FALSE,
          ylim=range(yt$breaks),yaxs="i")
 
-    mtext("Time",1,5.2,cex=3.5)
-    mtext(paste0(def$title," (",def$units,")"),2,6.8,cex=3.5)
+    mtext("Time",1,ts_xlabel_line,cex=ts_xlabel_cex)
+    mtext(paste0(def$title," (",def$units,")"),2,ts_ylabel_line,cex=ts_ylabel_cex)
 
     idx <- timeseries_axis_indices(tt)
 
     axis(1,at=x[idx],labels=format(tt[idx],"%Y-%m-%d"),
-         cex.axis=4,line=4,lty=0)
-    axis(2,at=yt$breaks,labels=yt$labels,las=1,cex.axis=3)
+         cex.axis=ts_axis_cex,line=1,lty=0)
+    axis(2,at=yt$breaks,labels=yt$labels,las=1,cex.axis=ts_axis_cex)
 
     box()
     abline(h=yt$breaks,col="grey")
@@ -1017,18 +1107,18 @@ if (length(column_plot_variables) > 0) {
            lwd=5,col=c("blue","red"),cex=3)
 
     ### Diurnal cycle
-    par(mai=c(2.8,2.9,0,0.55),family="Century Gothic")
+    par(mai=ts_panel_mai,family="Century Gothic")
     yd <- axis_ticks(c(dc1,dc2),10)
 
     plot(1:8,type="n",axes=FALSE,ann=FALSE,
          ylim=range(yd$breaks),yaxs="i")
 
-    mtext("Time (3 hourly UTC)",1,5.2,cex=3.5)
-    mtext(paste0(def$title," (",def$units,")"),2,6.8,cex=3.5)
+    mtext("Time (3 hourly UTC)",1,ts_xlabel_line,cex=ts_xlabel_cex)
+    mtext(paste0(def$title," (",def$units,")"),2,ts_ylabel_line,cex=ts_ylabel_cex)
 
     axis(1,at=1:8,labels=sprintf("%02d",hrs),
-         cex.axis=4,line=4,lty=0)
-    axis(2,at=yd$breaks,labels=yd$labels,las=1,cex.axis=3)
+         cex.axis=ts_axis_cex,line=1,lty=0)
+    axis(2,at=yd$breaks,labels=yd$labels,las=1,cex.axis=ts_axis_cex)
 
     box()
     abline(h=yd$breaks,col="grey")
@@ -1166,7 +1256,7 @@ if (length(precip_variables) > 0) {
     par(mai=c(0,0,0,0))
     plot.new()
     text(0.5,0.5,paste0(def$title," (3 h)"),
-         col="grey20",cex=5,family="Century Gothic",srt=90)
+         col="grey20",cex=map_ylabel_cex,family="Century Gothic",srt=90)
 
     MapNC(
       filename_topo="",figure_box=figure_box,field_show_box=field_show_box,
@@ -1201,24 +1291,24 @@ if (length(precip_variables) > 0) {
     )
 
     ### Time series
-    par(mai=c(2.8,2.9,0,0.55),family="Century Gothic")
+    par(mai=ts_panel_mai,family="Century Gothic")
     x <- seq_along(plot_tmean_tim)
     yseq <- positive_axis_ticks(c(plot_tmean_var1,plot_tmean_var2),n=10)
 
     plot(x,type="n",axes=FALSE,ann=FALSE,
          ylim=c(0,max(yseq$breaks)),yaxs="i")
 
-    mtext("Time",side=1,line=5.2,cex=3.5)
-    mtext("Precipitation (mm / 3 h)",side=2,line=6.8,cex=3.5)
+    mtext("Time",side=1,line=ts_xlabel_line,cex=ts_xlabel_cex)
+    mtext("Precipitation (mm / 3 h)",side=2,line=ts_ylabel_line,cex=ts_ylabel_cex)
 
     IDx_labels <- timeseries_axis_indices(plot_tmean_tim)
 
     axis(1,at=x[IDx_labels],
          labels=format(plot_tmean_tim[IDx_labels],"%Y-%m-%d"),
-         cex.axis=4,line=4,lty=0)
+         cex.axis=ts_axis_cex,line=1,lty=0)
     axis(1,at=x[IDx_labels],labels=FALSE,tck=0.01)
     axis(1,at=x[IDx_labels],labels=FALSE,tck=-0.01)
-    axis(2,at=yseq$breaks,labels=yseq$labels,las=1,cex.axis=3)
+    axis(2,at=yseq$breaks,labels=yseq$labels,las=1,cex.axis=ts_axis_cex)
 
     box(lwd=2)
     abline(h=yseq$breaks,lwd=1,col="grey")
@@ -1233,19 +1323,19 @@ if (length(precip_variables) > 0) {
     legend("top",legend=c(expname1,expname2),lwd=5,col=c("blue","red"),cex=3)
 
     ### Diurnal cycle
-    par(mai=c(2.8,2.9,0,0.55),family="Century Gothic")
+    par(mai=ts_panel_mai,family="Century Gothic")
     yseq <- positive_axis_ticks(c(dhourmean_var1,dhourmean_var2),n=10)
 
     plot(1:8,type="n",axes=FALSE,ann=FALSE,
          ylim=c(0,max(yseq$breaks)),yaxs="i")
 
     mtext("3-hour interval starting UTC",side=1,line=12,cex=3.5)
-    mtext("Precipitation (mm / 3 h)",side=2,line=6.8,cex=3.5)
+    mtext("Precipitation (mm / 3 h)",side=2,line=ts_ylabel_line,cex=ts_ylabel_cex)
 
-    axis(1,at=1:8,labels=c("00","03","06","09","12","15","18","21"),cex.axis=4,line=4,lty=0)
+    axis(1,at=1:8,labels=c("00","03","06","09","12","15","18","21"),cex.axis=ts_axis_cex,line=1,lty=0)
     axis(1,at=1:8,labels=FALSE,tck=0.01)
     axis(1,at=1:8,labels=FALSE,tck=-0.01)
-    axis(2,at=yseq$breaks,labels=yseq$labels,las=1,cex.axis=3)
+    axis(2,at=yseq$breaks,labels=yseq$labels,las=1,cex.axis=ts_axis_cex)
 
     box(lwd=2)
     abline(h=yseq$breaks,lwd=1,col="grey")
@@ -1425,7 +1515,7 @@ if (length(lifetime_variables) > 0) {
     par(mai=c(0,0,0,0)); plot.new()
     text(
       0.5,0.5,"Deposition lifetime",
-      col="grey20",cex=5,family="Century Gothic",srt=90
+      col="grey20",cex=map_ylabel_cex,family="Century Gothic",srt=90
     )
 
     MapNC(
@@ -1468,7 +1558,7 @@ if (length(lifetime_variables) > 0) {
     )
 
     ### Time series
-    par(mai=c(2.8,2.9,0,0.55),family="Century Gothic")
+    par(mai=ts_panel_mai,family="Century Gothic")
     x <- seq_along(plot_tmean_tim)
     yseq <- positive_axis_ticks(
       c(plot_tmean_var1,plot_tmean_var2),n=10
@@ -1479,19 +1569,19 @@ if (length(lifetime_variables) > 0) {
       ylim=c(0,max(yseq$breaks)),yaxs="i"
     )
 
-    mtext("Time",side=1,line=5.2,cex=3.5)
-    mtext("Deposition lifetime (days)",side=2,line=6.8,cex=3.5)
+    mtext("Time",side=1,line=ts_xlabel_line,cex=ts_xlabel_cex)
+    mtext("Deposition lifetime (days)",side=2,line=ts_ylabel_line,cex=ts_ylabel_cex)
 
     IDx_labels <- timeseries_axis_indices(plot_tmean_tim)
 
     axis(
       1,at=x[IDx_labels],
       labels=format(plot_tmean_tim[IDx_labels],"%Y-%m-%d"),
-      cex.axis=4,line=4,lty=0
+      cex.axis=ts_axis_cex,line=1,lty=0
     )
     axis(1,at=x[IDx_labels],labels=FALSE,tck=0.01)
     axis(1,at=x[IDx_labels],labels=FALSE,tck=-0.01)
-    axis(2,at=yseq$breaks,labels=yseq$labels,las=1,cex.axis=3)
+    axis(2,at=yseq$breaks,labels=yseq$labels,las=1,cex.axis=ts_axis_cex)
 
     box(lwd=2)
     abline(h=yseq$breaks,lwd=1,col="grey")
@@ -1511,7 +1601,7 @@ if (length(lifetime_variables) > 0) {
     )
 
     ### Native 3-hourly diurnal cycle
-    par(mai=c(2.8,2.9,0,0.55),family="Century Gothic")
+    par(mai=ts_panel_mai,family="Century Gothic")
     yseq <- positive_axis_ticks(
       c(dhourmean_var1,dhourmean_var2),n=10
     )
@@ -1521,17 +1611,17 @@ if (length(lifetime_variables) > 0) {
       ylim=c(0,max(yseq$breaks)),yaxs="i"
     )
 
-    mtext("Time (3 hourly UTC)",side=1,line=12,cex=3.5)
-    mtext("Deposition lifetime (days)",side=2,line=6.8,cex=3.5)
+    mtext("Time (3 hourly UTC)",side=1,line=ts_xlabel_line,cex=ts_xlabel_cex)
+    mtext("Deposition lifetime (days)",side=2,line=ts_ylabel_line,cex=ts_ylabel_cex)
 
     axis(
       1,at=1:8,
       labels=c("00","03","06","09","12","15","18","21"),
-      cex.axis=4,line=4,lty=0
+      cex.axis=ts_axis_cex,line=1,lty=0
     )
     axis(1,at=1:8,labels=FALSE,tck=0.01)
     axis(1,at=1:8,labels=FALSE,tck=-0.01)
-    axis(2,at=yseq$breaks,labels=yseq$labels,las=1,cex.axis=3)
+    axis(2,at=yseq$breaks,labels=yseq$labels,las=1,cex.axis=ts_axis_cex)
 
     box(lwd=2)
     abline(h=yseq$breaks,lwd=1,col="grey")
@@ -1691,7 +1781,7 @@ if (length(dep_variables) > 0) {
 
     for (flux in available_fluxes) {
       z <- dep_data[[flux]]
-      par(mai=c(0,0,0,0)); plot.new(); text(0.5,0.5,plot_type_title[[flux]],col="grey20",cex=5,family="Century Gothic",srt=90)
+      par(mai=c(0,0,0,0)); plot.new(); text(0.5,0.5,plot_type_title[[flux]],col="grey20",cex=map_ylabel_cex,family="Century Gothic",srt=90)
 
       MapNC(filename_topo="",figure_box=figure_box,field_show_box=field_show_box,coastlineWorldFine_lwd=coastlineWorldFine_lwd,gridlines=gridlines,projection=projection,lonmax=lonmax,lonmin=lonmin,latmax=latmax,latmin=latmin,drawMapBox=regional_mode,field_value=z$field_var1,field_lon=z$field_lon,field_lat=z$field_lat,field_pallete_name="TROPOMI_NEW",field_breaks=z$field_breaks,field_units=z$units,field_pallete_starting_alpha=100,field_show_legend=FALSE)
       MapNC(filename_topo="",figure_box=figure_box,field_show_box=field_show_box,coastlineWorldFine_lwd=coastlineWorldFine_lwd,gridlines=gridlines,projection=projection,lonmax=lonmax,lonmin=lonmin,latmax=latmax,latmin=latmin,drawMapBox=regional_mode,field_value=z$field_var2,field_lon=z$field_lon,field_lat=z$field_lat,field_pallete_name="TROPOMI_NEW",field_breaks=z$field_breaks,field_units=z$units,field_pallete_starting_alpha=100,field_show_legend=TRUE,field_legend_mai_right=1.8,field_legend_nlabels=7)
@@ -1720,21 +1810,21 @@ if (length(dep_variables) > 0) {
         all_ts <- c(all_ts,wet_massdiag1$value,wet_massdiag2$value)
     }
 
-    par(mai=c(2.8,2.9,0,0.55),family="Century Gothic")
+    par(mai=ts_panel_mai,family="Century Gothic")
     yseq <- axis_ticks(all_ts,n=10)
     pad <- diff(range(yseq$breaks))*0.05
     if (!is.finite(pad) || pad == 0) pad <- max(abs(yseq$breaks),na.rm=TRUE)*0.05
     if (!is.finite(pad) || pad == 0) pad <- 1
 
     plot(x,type="n",axes=FALSE,ann=FALSE,ylim=c(min(yseq$breaks)-pad,max(yseq$breaks)+pad),yaxs="i")
-    mtext("Time",side=1,line=5.2,cex=3.5)
-    mtext(if (regional_mode) paste0(region," flux (Tg/day)") else "Global flux (Tg/day)",side=2,line=6.8,cex=3.5)
+    mtext("Time",side=1,line=ts_xlabel_line,cex=ts_xlabel_cex)
+    mtext(if (regional_mode) paste0(region," flux (Tg/day)") else "Global flux (Tg/day)",side=2,line=ts_ylabel_line,cex=ts_ylabel_cex)
 
     IDx_labels <- timeseries_axis_indices(tmean_tim)
-    axis(1,at=x[IDx_labels],labels=format(tmean_tim[IDx_labels],"%Y-%m-%d"),cex.axis=4,line=4,lty=0)
+    axis(1,at=x[IDx_labels],labels=format(tmean_tim[IDx_labels],"%Y-%m-%d"),cex.axis=ts_axis_cex,line=1,lty=0)
     axis(1,at=x[IDx_labels],labels=FALSE,tck=0.01)
     axis(1,at=x[IDx_labels],labels=FALSE,tck=-0.01)
-    axis(2,at=yseq$breaks,labels=yseq$labels,las=1,cex.axis=3)
+    axis(2,at=yseq$breaks,labels=yseq$labels,las=1,cex.axis=ts_axis_cex)
     box(lwd=2)
     abline(h=yseq$breaks,lwd=1,col="grey")
     abline(v=x[IDx_labels],lwd=1,col="grey")
@@ -1796,7 +1886,7 @@ if (length(dep_variables) > 0) {
     }
 
     all_dc <- unlist(lapply(available_fluxes,function(flux) c(dep_data[[flux]]$dhourmean_var1,dep_data[[flux]]$dhourmean_var2)))
-    par(mai=c(2.8,2.9,0,0.55),family="Century Gothic")
+    par(mai=ts_panel_mai,family="Century Gothic")
 
     yseq <- axis_ticks(all_dc,n=10)
     pad <- diff(range(yseq$breaks))*0.05
@@ -1804,13 +1894,13 @@ if (length(dep_variables) > 0) {
     if (!is.finite(pad) || pad == 0) pad <- 1
 
     plot(1:8,type="n",axes=FALSE,ann=FALSE,ylim=c(min(yseq$breaks)-pad,max(yseq$breaks)+pad),yaxs="i")
-    mtext("Time (3 hourly UTC)",side=1,line=12,cex=3.5)
-    mtext(if (regional_mode) paste0(region," flux (Tg/day)") else "Global flux (Tg/day)",side=2,line=6.8,cex=3.5)
+    mtext("Time (3 hourly UTC)",side=1,line=ts_xlabel_line,cex=ts_xlabel_cex)
+    mtext(if (regional_mode) paste0(region," flux (Tg/day)") else "Global flux (Tg/day)",side=2,line=ts_ylabel_line,cex=ts_ylabel_cex)
 
-    axis(1,at=1:8,labels=c("00","03","06","09","12","15","18","21"),cex.axis=4,line=4,lty=0)
+    axis(1,at=1:8,labels=c("00","03","06","09","12","15","18","21"),cex.axis=ts_axis_cex,line=1,lty=0)
     axis(1,at=1:8,labels=FALSE,tck=0.01)
     axis(1,at=1:8,labels=FALSE,tck=-0.01)
-    axis(2,at=yseq$breaks,labels=yseq$labels,las=1,cex.axis=3)
+    axis(2,at=yseq$breaks,labels=yseq$labels,las=1,cex.axis=ts_axis_cex)
 
     box(lwd=2)
     abline(h=yseq$breaks,lwd=1,col="grey")

@@ -11,7 +11,7 @@ expclass2 <- "rd"
 sDate   <- "20190101"
 eDate   <- "20190103"
 ### Runtype
-runtype <- "plot" # plot | download
+runtype <- "download" # plot | download
 ### Other
 massdiag_compare <- FALSE
 
@@ -27,24 +27,32 @@ region <- "global"
 
 ### VARIABLES
 variables <- c(
-  "od_ss",
-  "od_du",
-  "od_pom",
-  "od_bc",
-  "od_so4",
-  "od_ni",
-  "od_am",
-  "od_soa",
-
-  "od_wat",
-  "od_wat_ks",
-  "od_wat_as",
-  "od_wat_cs",
-
-  "aod550",
-  "od_sum_species",
-  "aod550_species"
+  "AOD_per_species",
+  "AODratio_per_species",
+  "MASS_per_species",
+  "MASSratio_per_species",
+  "MEC_per_species"
 )
+
+#variables <- c(
+#  "od_ss",
+#  "od_du",
+#  "od_pom",
+#  "od_bc",
+#  "od_so4",
+#  "od_ni",
+#  "od_am",
+#  "od_soa",
+
+#  "od_wat",
+#  "od_wat_ks",
+#  "od_wat_as",
+#  "od_wat_cs",
+
+#  "aod550"
+#  "od_sum_species",
+#  "aod550_species"
+#)
 
 #variables <- c("precip_total","precip_convective","precip_large_scale")
 

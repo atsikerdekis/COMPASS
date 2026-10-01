@@ -355,6 +355,12 @@ read_total_aerosol_burden <- function(expname,date) {
   drop(out)
 }
 
+get_od_species_suffixes <- function(include_soa=TRUE) {
+  x <- c("ss","du","pom","bc","so4","ni","am")
+  if (include_soa) x <- c(x,"soa")
+  x
+}
+
 resolve_species_od_table <- function(exptype,include_soa=TRUE) {
   vars <- paste0("od_",get_od_species_suffixes(include_soa=include_soa))
   if (exptype == "HAM") return(resolve_variables("HAM",vars))
@@ -402,10 +408,10 @@ read_water_aod <- function(expname,date,logical_name) {
     if (length(ilev) != 1) stop("Level ",level_value," not found in ",file)
     drop(raw[,,ilev,])
   }
-  if (base == "od_wat_ks") return(pick_level(2))
-  if (base == "od_wat_as") return(pick_level(3))
-  if (base == "od_wat_cs") return(pick_level(4))
-  if (base == "od_wat") return(pick_level(2) + pick_level(3) + pick_level(4))
+  if (base == "wat_ks") return(pick_level(2))
+  if (base == "wat_as") return(pick_level(3))
+  if (base == "wat_cs") return(pick_level(4))
+  if (base == "wat") return(pick_level(2) + pick_level(3) + pick_level(4))
   stop("Unsupported water variable: ",logical_name)
 }
 read_optical_property <- function(expname,date,logical_name) {
@@ -536,6 +542,125 @@ read_total_column <- function(expname,date,logical_name) {
          paste(dim(field),collapse="x"))
 
   field
+}
+
+
+
+#########################################
+### MULTI-PANEL SPECIES-MAP FUNCTIONS ###
+#########################################
+get_panel_species_list <- function(exptype, panel_base) {
+  panel_base <- tolower(strip_time_aggregation(panel_base))
+
+  if (panel_base %in% c("aod_per_species","aodratio_per_species")) {
+    if (exptype == "HAM") return(c("total","du","ss","pom","bc","so4","ni","am","wat"))
+    return(c("total","du","ss","pom","soa","bc","so4","ni","am"))
+  }
+
+  if (panel_base %in% c("mass_per_species","massratio_per_species","mec_per_species")) {
+    return(c("total","du","ss","pom","soa","bc","so4","ni","am"))
+  }
+
+  stop("Unsupported panel species base: ",panel_base)
+}
+
+read_single_species_mass <- function(expname,date,exptype,suffix) {
+  lname <- paste0("mss_",suffix)
+  table <- tryCatch(resolve_variables(exptype,lname), error=function(e) data.frame())
+  if (nrow(table) == 0) stop("Mass burden variable not available: ",lname," for ",exptype)
+  file <- variable_file(lname,table,expname,date)
+  read_variable(file,exptype,lname,table)
+}
+
+build_panel_species_maps <- function(expname, exptype, dates, panel_base) {
+  panel_base <- tolower(strip_time_aggregation(panel_base))
+  species_order <- get_panel_species_list(exptype,panel_base)
+  out <- list()
+
+  stack_fields <- function(field_list) {
+    nx <- dim(field_list[[1]])[1]
+    ny <- dim(field_list[[1]])[2]
+    nt <- sum(sapply(field_list,function(x) dim(x)[3]))
+    array(unlist(field_list),dim=c(nx,ny,nt))
+  }
+  mean_stack <- function(field_list) apply(stack_fields(field_list),c(1,2),mean,na.rm=TRUE)
+
+  total_aod <- NULL
+  species_aod <- list()
+  species_mass <- list()
+  total_mass <- NULL
+
+  if (panel_base %in% c("aod_per_species","aodratio_per_species","mec_per_species")) {
+    total_aod <- mean_stack(lapply(dates,function(d) read_direct_optical(expname,d,"207.210")))
+  }
+
+  aod_species_needed <- setdiff(species_order,c("total","wat"))
+  if (length(aod_species_needed) > 0 && panel_base %in% c("aod_per_species","aodratio_per_species","mec_per_species")) {
+    comps_per_day <- lapply(dates,function(d) read_species_od_components(expname,d,exptype))
+    for (suffix in aod_species_needed) {
+      species_aod[[suffix]] <- mean_stack(lapply(comps_per_day,function(x) x[[suffix]]))
+    }
+  }
+  if ("wat" %in% species_order) {
+    species_aod[["wat"]] <- mean_stack(lapply(dates,function(d) read_water_aod(expname,d,"wat")))
+  }
+
+  if (panel_base %in% c("mass_per_species","massratio_per_species","mec_per_species")) {
+    mass_species <- setdiff(species_order,"total")
+    for (suffix in mass_species) {
+      species_mass[[suffix]] <- mean_stack(lapply(dates,function(d) read_single_species_mass(expname,d,exptype,suffix)))
+    }
+    total_mass <- NULL
+    for (suffix in names(species_mass)) {
+      if (is.null(total_mass)) total_mass <- species_mass[[suffix]] else total_mass <- total_mass + species_mass[[suffix]]
+    }
+  }
+
+  if (panel_base == "aod_per_species") {
+    out[["total"]] <- total_aod
+    for (suffix in species_order[species_order != "total"]) out[[suffix]] <- species_aod[[suffix]]
+    return(out)
+  }
+
+  if (panel_base == "aodratio_per_species") {
+    out[["total"]] <- total_aod
+    for (suffix in species_order[species_order != "total"]) {
+      x <- species_aod[[suffix]] / total_aod
+      x[!is.finite(x) | x < 0] <- NA_real_
+      out[[suffix]] <- x
+    }
+    return(out)
+  }
+
+  if (panel_base == "mass_per_species") {
+    out[["total"]] <- total_mass
+    for (suffix in species_order[species_order != "total"]) out[[suffix]] <- species_mass[[suffix]]
+    return(out)
+  }
+
+  if (panel_base == "massratio_per_species") {
+    out[["total"]] <- total_mass
+    for (suffix in species_order[species_order != "total"]) {
+      x <- species_mass[[suffix]] / total_mass
+      x[!is.finite(x) | x < 0] <- NA_real_
+      out[[suffix]] <- x
+    }
+    return(out)
+  }
+
+  if (panel_base == "mec_per_species") {
+    total_mec <- total_aod / (total_mass * 1000)
+    total_mec[!is.finite(total_mec) | total_mec < 0] <- NA_real_
+    out[["total"]] <- total_mec
+    for (suffix in species_order[species_order != "total"]) {
+      x <- species_aod[[suffix]] / (species_mass[[suffix]] * 1000)
+      x[!is.finite(x) | x < 0] <- NA_real_
+      out[[suffix]] <- x
+    }
+    return(out)
+  }
+
+  stop("Unsupported panel base: ",panel_base)
 }
 
 #################################

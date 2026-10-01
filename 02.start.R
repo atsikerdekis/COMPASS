@@ -194,13 +194,30 @@ if (runtype == "download") {
       params_sfc <- unique(expvars$grib[expvars$grib_column %in% surface_columns])
       params_sfc <- params_sfc[!is.na(params_sfc) & params_sfc != ""]
 
-      ### Species-OD support for derived optical products.
-      if (any(strip_time_aggregation(optical_variables) %in% c("od_sum_species","aod550_species"))) {
+      panel_bases <- tolower(strip_time_aggregation(panel_species_variables))
+
+      ### Species-OD support for derived optical products and multi-panel species maps.
+      if (any(strip_time_aggregation(optical_variables) %in% c("od_sum_species","aod550_species")) ||
+          any(panel_bases %in% c("aod_per_species","aodratio_per_species","mec_per_species"))) {
         species_vars <- paste0("od_",get_od_species_suffixes(include_soa=TRUE))
         species_table <- resolve_variables(exptype,species_vars)
         extra_sfc <- unique(species_table$grib[species_table$grib_column == "gribod"])
         extra_sfc <- extra_sfc[!is.na(extra_sfc) & extra_sfc != ""]
         params_sfc <- unique(c(params_sfc,extra_sfc))
+      }
+
+      ### Species mass-burden support for multi-panel mass / MEC maps.
+      if (any(panel_bases %in% c("mass_per_species","massratio_per_species","mec_per_species"))) {
+        mass_species <- c("ss","du","pom","bc","so4","ni","am","soa")
+        extra_mss <- character(0)
+        for (nm in paste0("mss_",mass_species)) {
+          tmp <- tryCatch(resolve_variables(exptype,nm), error=function(e) data.frame())
+          if (nrow(tmp) > 0)
+            extra_mss <- c(extra_mss, tmp$grib[tmp$grib_column == "gribmss"])
+        }
+        extra_mss <- unique(extra_mss)
+        extra_mss <- extra_mss[!is.na(extra_mss) & extra_mss != ""]
+        params_sfc <- unique(c(params_sfc,extra_mss))
       }
       params_sfc <- paste(params_sfc,collapse="/")
 
@@ -214,7 +231,8 @@ if (runtype == "download") {
       ### HAM water-AOD modal diagnostics (stored on ML levels 2/3/4)
       levels_ml_wat <- ""
       params_ml_wat <- ""
-      if (length(wat_variables) > 0 && exptype == "HAM") {
+      need_panel_wat <- any(panel_bases %in% c("aod_per_species","aodratio_per_species")) && exptype == "HAM"
+      if (length(wat_variables) > 0 || need_panel_wat) {
         levels_ml_wat <- "2/3/4"
         params_ml_wat <- "22.210"
       }
@@ -229,8 +247,11 @@ if (runtype == "download") {
 
 ### Optical-property diagnostics
 params_optics <- ""
-if (length(optical_variables) > 0) {
-  params_optics <- paste(get_optical_required_gribs(optical_variables),collapse="/")
+if (length(optical_variables) > 0 || any(panel_bases %in% c("aod_per_species","aodratio_per_species","mec_per_species"))) {
+  optical_need <- optical_variables
+  if (any(panel_bases %in% c("aod_per_species","aodratio_per_species","mec_per_species")))
+    optical_need <- unique(c(optical_need,"aod550"))
+  params_optics <- paste(get_optical_required_gribs(optical_need),collapse="/")
 }
 
 
@@ -243,7 +264,7 @@ if (length(column_variables) > 0) {
 
 ### MEC needs total aerosol column burden. Use all available mss GRIBs.
 params_mec <- ""
-if ("mec550" %in% strip_time_aggregation(optical_variables)) {
+if ("mec550" %in% strip_time_aggregation(optical_variables) || any(panel_bases %in% "mec_per_species")) {
   params_mec <- unique(expvars$grib[expvars$grib_column == "gribmss"])
   params_mec <- params_mec[!is.na(params_mec) & params_mec != ""]
   ### If no MSS variable was explicitly requested, resolve the full aerosol burden.

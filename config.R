@@ -11,7 +11,7 @@ expclass2 <- "rd"
 sDate   <- "20190101"
 eDate   <- "20190103"
 ### Runtype
-runtype <- "download" # plot | download
+runtype <- "plot" # plot | download
 ### Other
 massdiag_compare <- FALSE
 
@@ -35,13 +35,15 @@ variables <- c(
   "od_ni",
   "od_am",
   "od_soa",
-  "wat",
+
+  "od_wat",
+  "od_wat_ks",
+  "od_wat_as",
+  "od_wat_cs",
+
   "aod550",
   "od_sum_species",
-  "aod550_species",
-  "wat_ks",
-  "wat_as",
-  "wat_cs"
+  "aod550_species"
 )
 
 #variables <- c("precip_total","precip_convective","precip_large_scale")

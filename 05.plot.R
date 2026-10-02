@@ -262,39 +262,93 @@ get_panel_species_label <- function(x) {
 }
 
 plot_species_map_grid <- function(field_list, expname, exptype, panel_name, units=" ") {
-  llfile <- if (panel_name %in% c("mec_per_species","mass_per_species","massratio_per_species","aod_per_species","aodratio_per_species")) NULL else NULL
-  first_key <- names(field_list)[1]
   title_text <- get_panel_species_definition(panel_name)$title
   plot_dir <- make_plot_dir("optics")
-  file_out <- paste0(plot_dir, "Panel_", panel_name, "_", expname, region_file_tag, "_", sDate, "-", eDate, ".png")
+  file_out <- paste0(
+    plot_dir,"Panel_",panel_name,"_",expname,region_file_tag,"_",sDate,"-",eDate,".png"
+  )
+
+  if (length(field_list) != 9)
+    stop("Species panel plot requires exactly 9 fields; found ",length(field_list)," for ",panel_name," / ",expname)
+
+  ### MapNC with field_show_legend=TRUE consumes two layout cells:
+  ### first the map, then its colour bar. Reserve those cells explicitly.
+  panel_layout <- matrix(
+    c(
+      1,1,1,1,1,1,
+      2,3,4,5,6,7,
+      8,9,10,11,12,13,
+      14,15,16,17,18,19
+    ),
+    nrow=4,byrow=TRUE
+  )
+
   dpi <- 300
-  png(file_out, width=11.8*dpi, height=12.0*dpi)
-  layout(matrix(c(1,1,1,2,3,4,5,6,7,8,9,10), nrow=4, byrow=TRUE), heights=c(0.24,1,1,1))
-  par(mai=c(0,0,0,0)); plot.new(); text(0.5,0.5,paste0("Experiment: ",expname," (",exptype,")   |   Type: ",title_text,region_title,"   |   Period: ",sDate,"-",eDate), col="grey40", cex=2.4, family="Century Gothic"); abline(h=c(0,1),col="grey50",lwd=2)
+  png(file_out,width=13.4*dpi,height=8.5*dpi)
+  layout(
+    panel_layout,
+    widths=c(3.9,0.55,3.9,0.55,3.9,0.55),
+    heights=c(0.35,2.7,2.7,2.7)
+  )
+
+  par(mai=c(0,0,0,0))
+  plot.new()
+  text(
+    0.5,0.5,
+    paste0(
+      "Experiment: ",expname," (",exptype,")   |   Type: ",title_text,
+      region_title,"   |   Period: ",sDate,"-",eDate
+    ),
+    col="grey40",cex=2.4,family="Century Gothic"
+  )
+  abline(h=c(0,1),col="grey50",lwd=2)
+
   for (nm in names(field_list)) {
     field_value <- field_list[[nm]]
-    if (regional_mode) field_value <- mask_region_field(field_value, field_lon, field_lat, region_box)
+    if (regional_mode)
+      field_value <- mask_region_field(field_value,field_lon,field_lat,region_box)
+
     local_units <- units
     if (panel_name %in% c("aodratio_per_species","massratio_per_species") && nm != "total") {
       br <- seq(0,1,length.out=201)
       local_units <- "fraction"
     } else {
-      br <- positive_breaks(field_value, 200)
+      br <- positive_breaks(field_value,200)
     }
-    MapNC(filename_topo="", figure_box=figure_box, field_show_box=field_show_box,
-          coastlineWorldFine_lwd=coastlineWorldFine_lwd, gridlines=gridlines,
-          projection=projection, lonmax=lonmax, lonmin=lonmin, latmax=latmax, latmin=latmin,
-          drawMapBox=regional_mode, field_value=field_value, field_lon=field_lon, field_lat=field_lat,
-          field_pallete_name="TROPOMI_NEW", field_breaks=br, field_units=local_units,
-          field_pallete_starting_alpha=100, field_show_legend=TRUE,
-          field_legend_mai_right=1.15, field_legend_nlabels=5)
-    mtext(get_panel_species_label(nm), side=3, line=0.25, cex=map_title_cex, family="Century Gothic")
+
+    MapNC(
+      filename_topo="",
+      figure_box=figure_box,
+      field_show_box=field_show_box,
+      coastlineWorldFine_lwd=coastlineWorldFine_lwd,
+      gridlines=gridlines,
+      projection=projection,
+      lonmax=lonmax,lonmin=lonmin,
+      latmax=latmax,latmin=latmin,
+      drawMapBox=regional_mode,
+      field_value=field_value,
+      field_lon=field_lon,
+      field_lat=field_lat,
+      field_pallete_name="TROPOMI_NEW",
+      field_breaks=br,
+      field_units=local_units,
+      field_pallete_starting_alpha=100,
+      field_show_legend=TRUE,
+      field_legend_cex=2.0,
+      field_legend_mai_right=1.15,
+      field_legend_mai_top=0.15,
+      field_legend_nlabels=5,
+      title_main=get_panel_species_label(nm),
+      col_title="grey20",
+      col_title_shadow="white"
+    )
   }
+
   dev.off()
-  tmp <- paste0(file_out, ".tmp.png")
-  compress(file_in=file_out, file_out=tmp)
-  file.rename(tmp, file_out)
-  message("---> Panel figure: ", file_out)
+  tmp <- paste0(file_out,".tmp.png")
+  compress(file_in=file_out,file_out=tmp)
+  file.rename(tmp,file_out)
+  message("---> Panel figure: ",file_out)
 }
 
 ############################

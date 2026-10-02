@@ -8,10 +8,10 @@ expname2  <- "jbjc"
 exptype2  <- "HAM"
 expclass2 <- "rd"
 ### Period
-sDate   <- "20190104"
-eDate   <- "20190531"
+sDate   <- "20190101"
+eDate   <- "20190103"
 ### Runtype
-runtype <- "download" # plot | download
+runtype <- "plot" # plot | download
 ### Other
 massdiag_compare <- FALSE
 

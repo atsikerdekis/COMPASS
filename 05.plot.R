@@ -283,12 +283,17 @@ plot_species_map_grid <- function(field_list, expname, exptype, panel_name, unit
     nrow=4,byrow=TRUE
   )
 
+  ### Match the horizontal proportions used by the standard COMPASS maps:
+  ### 3.9 for each map and 0.8 for each colour bar.
+  ### Three map rows use the standard ~2-unit map height.
   dpi <- 300
-  png(file_out,width=13.4*dpi,height=8.5*dpi)
+  panel_width  <- 3*(3.9+0.8)
+  panel_height <- 0.35 + 3*2.1
+  png(file_out,width=panel_width*dpi,height=panel_height*dpi)
   layout(
     panel_layout,
-    widths=c(3.9,0.55,3.9,0.55,3.9,0.55),
-    heights=c(0.35,2.7,2.7,2.7)
+    widths=c(3.9,0.8,3.9,0.8,3.9,0.8),
+    heights=c(0.35,2.1,2.1,2.1)
   )
 
   par(mai=c(0,0,0,0))
@@ -303,15 +308,21 @@ plot_species_map_grid <- function(field_list, expname, exptype, panel_name, unit
   )
   abline(h=c(0,1),col="grey50",lwd=2)
 
+  ratio_panel <- panel_name %in% c("aodratio_per_species","massratio_per_species")
+
   for (nm in names(field_list)) {
     field_value <- field_list[[nm]]
     if (regional_mode)
       field_value <- mask_region_field(field_value,field_lon,field_lat,region_box)
 
     local_units <- units
-    if (panel_name %in% c("aodratio_per_species","massratio_per_species") && nm != "total") {
-      br <- seq(0,1,length.out=201)
-      local_units <- "fraction"
+
+    ### The TOTAL panel remains the physical total field (AOD550 or total mass).
+    ### Species ratio panels are displayed as percentages, not fractions.
+    if (ratio_panel && nm != "total") {
+      field_value <- field_value*100
+      br <- seq(0,100,length.out=201)
+      local_units <- "%"
     } else {
       br <- positive_breaks(field_value,200)
     }
@@ -335,7 +346,7 @@ plot_species_map_grid <- function(field_list, expname, exptype, panel_name, unit
       field_pallete_starting_alpha=100,
       field_show_legend=TRUE,
       field_legend_cex=2.0,
-      field_legend_mai_right=1.15,
+      field_legend_mai_right=1.8,
       field_legend_mai_top=0.15,
       field_legend_nlabels=5,
       title_main=get_panel_species_label(nm),
@@ -916,12 +927,15 @@ if (length(panel_species_plot_variables) > 0) {
     panel_base <- tolower(strip_time_aggregation(logical_name))
     message("---> Plotting ", logical_name, if (regional_mode) paste0(" for ", region) else "")
 
-    ref_name <- if (panel_base %in% c("mass_per_species","massratio_per_species")) "mss_ss" else "od_ss"
-    ref_table1 <- if (panel_base %in% c("mass_per_species","massratio_per_species","mec_per_species")) variables_exp1 else variables_exp1
-    ref_file <- tryCatch(variable_file(ref_name, variables_exp1, expname1, seqDate[1]), error=function(e) NA)
-    if (!is.character(ref_file) || !file.exists(ref_file)) {
-      ref_file <- if (panel_base %in% c("aod_per_species","aodratio_per_species","mec_per_species")) optics_file(expname1, seqDate[1]) else variable_file("mss_ss", variables_exp1, expname1, seqDate[1])
+    if (panel_base %in% c("mass_per_species","massratio_per_species")) {
+      ref_table <- resolve_variables(exptype1,"mss_ss")
+      ref_file <- variable_file("mss_ss",ref_table,expname1,seqDate[1])
+    } else {
+      ref_file <- optics_file(expname1,seqDate[1])
     }
+
+    if (!file.exists(ref_file))
+      stop("Reference file for multi-panel species plot not found: ",ref_file)
     ll <- read_lon_lat(ref_file)
     field_lon <- ll$lon; field_lat <- ll$lat
 

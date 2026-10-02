@@ -64,13 +64,14 @@ column_plot_variables <- if (exists("column_variables")) column_variables else c
 wat_plot_variables <- if (exists("wat_variables")) wat_variables else character(0)
 panel_species_plot_variables <- if (exists("panel_species_variables")) panel_species_variables else character(0)
 
-ts_panel_mai <- c(1.55,1.60,0.05,0.18)
-ts_xlabel_line <- 2.25
-ts_ylabel_line <- 3.35
+ts_panel_mai <- c(1.95,2.45,0.05,0.18)
+ts_xlabel_line <- 4.8
+ts_ylabel_line <- 6.2
 ts_xlabel_cex <- 2.1
 ts_ylabel_cex <- 2.1
-ts_axis_cex <- 1.7
-map_ylabel_cex <- 3.4
+ts_xaxis_cex <- 4.0
+ts_yaxis_cex <- 3.0
+map_ylabel_cex <- 2.2
 map_title_cex <- 1.25
 
 ########################
@@ -431,10 +432,10 @@ for (type in plot_types) {
     IDx_labels <- timeseries_axis_indices(plot_tmean_tim)
     axis(1,at=x[IDx_labels],
          labels=format(plot_tmean_tim[IDx_labels],"%Y-%m-%d"),
-         cex.axis=ts_axis_cex,line=1,lty=0)
+         cex.axis=ts_xaxis_cex,line=0,lty=0)
     axis(1,at=x[IDx_labels],labels=FALSE,tck=0.01)
     axis(1,at=x[IDx_labels],labels=FALSE,tck=-0.01)
-    axis(2,at=yseq$breaks,labels=yseq$labels,las=1,cex.axis=ts_axis_cex)
+    axis(2,at=yseq$breaks,labels=yseq$labels,las=1,cex.axis=ts_yaxis_cex)
 
     box(lwd=2)
     abline(h=yseq$breaks,lwd=1,col="grey")
@@ -480,9 +481,9 @@ for (type in plot_types) {
     yseq <- positive_axis_ticks(c(dhourmean_var1,dhourmean_var2),n=10)
     plot(1:8,type="n",axes=FALSE,ann=FALSE,ylim=c(0,max(yseq$breaks)),yaxs="i")
     mtext("Time (3 hourly UTC)",side=1,line=ts_xlabel_line,cex=ts_xlabel_cex)
-    axis(1,at=1:8,labels=c("00","03","06","09","12","15","18","21"),cex.axis=ts_axis_cex,line=1,lty=0)
+    axis(1,at=1:8,labels=c("00","03","06","09","12","15","18","21"),cex.axis=ts_xaxis_cex,line=0,lty=0)
     axis(1,at=1:8,labels=FALSE,tck=0.01); axis(1,at=1:8,labels=FALSE,tck=-0.01)
-    axis(2,at=yseq$breaks,labels=yseq$labels,las=1,cex.axis=ts_axis_cex)
+    axis(2,at=yseq$breaks,labels=yseq$labels,las=1,cex.axis=ts_yaxis_cex)
     box(lwd=2); abline(h=yseq$breaks,lwd=1,col="grey"); abline(v=1:8,lwd=1,col="grey")
     lines(1:8,dhourmean_var1,lwd=5,col="blue")
     points(1:8,dhourmean_var1,pch=19,cex=1.8,col="blue")
@@ -660,10 +661,10 @@ if (length(rh_variables) > 0) {
     IDx_labels <- timeseries_axis_indices(plot_tmean_tim)
     axis(1,at=x[IDx_labels],
          labels=format(plot_tmean_tim[IDx_labels],"%Y-%m-%d"),
-         cex.axis=ts_axis_cex,line=1,lty=0)
+         cex.axis=ts_xaxis_cex,line=0,lty=0)
     axis(1,at=x[IDx_labels],labels=FALSE,tck=0.01)
     axis(1,at=x[IDx_labels],labels=FALSE,tck=-0.01)
-    axis(2,at=seq(0,100,10),labels=seq(0,100,10),las=1,cex.axis=ts_axis_cex)
+    axis(2,at=seq(0,100,10),labels=seq(0,100,10),las=1,cex.axis=ts_yaxis_cex)
 
     box(lwd=2)
     abline(h=seq(0,100,10),lwd=1,col="grey")
@@ -683,10 +684,10 @@ if (length(rh_variables) > 0) {
     mtext("Time (3 hourly UTC)",side=1,line=ts_xlabel_line,cex=ts_xlabel_cex)
     mtext("Relative humidity (%)",side=2,line=ts_ylabel_line,cex=ts_ylabel_cex)
 
-    axis(1,at=1:8,labels=c("00","03","06","09","12","15","18","21"),cex.axis=ts_axis_cex,line=1,lty=0)
+    axis(1,at=1:8,labels=c("00","03","06","09","12","15","18","21"),cex.axis=ts_xaxis_cex,line=0,lty=0)
     axis(1,at=1:8,labels=FALSE,tck=0.01)
     axis(1,at=1:8,labels=FALSE,tck=-0.01)
-    axis(2,at=seq(0,100,10),labels=seq(0,100,10),las=1,cex.axis=ts_axis_cex)
+    axis(2,at=seq(0,100,10),labels=seq(0,100,10),las=1,cex.axis=ts_yaxis_cex)
 
     box(lwd=2)
     abline(h=seq(0,100,10),lwd=1,col="grey")
@@ -797,8 +798,8 @@ if (length(optical_plot_variables) > 0) {
       mtext("Time",1,ts_xlabel_line,cex=ts_xlabel_cex)
       mtext("AOD550 (total + species)",2,ts_ylabel_line,cex=ts_ylabel_cex)
       idx <- timeseries_axis_indices(tt)
-      axis(1,at=x[idx],labels=format(tt[idx],"%Y-%m-%d"),cex.axis=ts_axis_cex,line=1,lty=0)
-      axis(2,at=yt$breaks,labels=yt$labels,las=1,cex.axis=ts_axis_cex)
+      axis(1,at=x[idx],labels=format(tt[idx],"%Y-%m-%d"),cex.axis=ts_xaxis_cex,line=0,lty=0)
+      axis(2,at=yt$breaks,labels=yt$labels,las=1,cex.axis=ts_yaxis_cex)
       box(); abline(h=yt$breaks,col="grey")
       lines(x,ts1,lwd=5,col=species_cols["total"],lty=1); points(x,ts1,pch=19,cex=1.8,col=species_cols["total"])
       lines(x,ts2,lwd=5,col=species_cols["total"],lty=2); points(x,ts2,pch=19,cex=1.8,col=species_cols["total"])
@@ -819,8 +820,8 @@ if (length(optical_plot_variables) > 0) {
       plot(1:8,type="n",axes=FALSE,ann=FALSE,ylim=range(yd$breaks),yaxs="i")
       mtext("Time (3 hourly UTC)",1,ts_xlabel_line,cex=ts_xlabel_cex)
       mtext("AOD550 (total + species)",2,ts_ylabel_line,cex=ts_ylabel_cex)
-      axis(1,at=1:8,labels=sprintf("%02d",hrs),cex.axis=ts_axis_cex,line=1,lty=0)
-      axis(2,at=yd$breaks,labels=yd$labels,las=1,cex.axis=ts_axis_cex)
+      axis(1,at=1:8,labels=sprintf("%02d",hrs),cex.axis=ts_xaxis_cex,line=0,lty=0)
+      axis(2,at=yd$breaks,labels=yd$labels,las=1,cex.axis=ts_yaxis_cex)
       box(); abline(h=yd$breaks,col="grey")
       lines(1:8,dc1,lwd=5,col=species_cols["total"],lty=1); points(1:8,dc1,pch=19,cex=1.8,col=species_cols["total"])
       lines(1:8,dc2,lwd=5,col=species_cols["total"],lty=2); points(1:8,dc2,pch=19,cex=1.8,col=species_cols["total"])
@@ -835,8 +836,8 @@ if (length(optical_plot_variables) > 0) {
       mtext("Time",1,ts_xlabel_line,cex=ts_xlabel_cex)
       mtext(get_optical_definition(logical_name)$title,2,ts_ylabel_line,cex=ts_ylabel_cex)
       idx <- timeseries_axis_indices(tt)
-      axis(1,at=x[idx],labels=format(tt[idx],"%Y-%m-%d"),cex.axis=ts_axis_cex,line=1,lty=0)
-      axis(2,at=yt$breaks,labels=yt$labels,las=1,cex.axis=ts_axis_cex)
+      axis(1,at=x[idx],labels=format(tt[idx],"%Y-%m-%d"),cex.axis=ts_xaxis_cex,line=0,lty=0)
+      axis(2,at=yt$breaks,labels=yt$labels,las=1,cex.axis=ts_yaxis_cex)
       box(); abline(h=yt$breaks,col="grey")
       lines(x,ts1,lwd=5,col="blue")
       points(x,ts1,pch=19,cex=1.8,col="blue")
@@ -845,7 +846,7 @@ if (length(optical_plot_variables) > 0) {
       add_mean_square(ts1,"blue")
       add_mean_square(ts2,"red")
       legend("top",c(expname1,expname2),lwd=4,col=c("blue","red"),cex=1.7,bty="n")
-      par(mai=ts_panel_mai,family="Century Gothic"); yd <- axis_ticks(c(dc1,dc2),10); plot(1:8,type="n",axes=FALSE,ann=FALSE,ylim=range(yd$breaks),yaxs="i"); mtext("Time (3 hourly UTC)",1,ts_xlabel_line,cex=ts_xlabel_cex); mtext(get_optical_definition(logical_name)$title,2,ts_ylabel_line,cex=ts_ylabel_cex); axis(1,at=1:8,labels=sprintf("%02d",hrs),cex.axis=ts_axis_cex,line=1,lty=0); axis(2,at=yd$breaks,labels=yd$labels,las=1,cex.axis=ts_axis_cex); box(); abline(h=yd$breaks,col="grey"); lines(1:8,dc1,lwd=5,col="blue"); points(1:8,dc1,pch=19,cex=1.8,col="blue"); lines(1:8,dc2,lwd=5,col="red"); points(1:8,dc2,pch=19,cex=1.8,col="red"); legend("top",c(expname1,expname2),lwd=4,col=c("blue","red"),cex=1.7,bty="n")
+      par(mai=ts_panel_mai,family="Century Gothic"); yd <- axis_ticks(c(dc1,dc2),10); plot(1:8,type="n",axes=FALSE,ann=FALSE,ylim=range(yd$breaks),yaxs="i"); mtext("Time (3 hourly UTC)",1,ts_xlabel_line,cex=ts_xlabel_cex); mtext(get_optical_definition(logical_name)$title,2,ts_ylabel_line,cex=ts_ylabel_cex); axis(1,at=1:8,labels=sprintf("%02d",hrs),cex.axis=ts_xaxis_cex,line=0,lty=0); axis(2,at=yd$breaks,labels=yd$labels,las=1,cex.axis=ts_yaxis_cex); box(); abline(h=yd$breaks,col="grey"); lines(1:8,dc1,lwd=5,col="blue"); points(1:8,dc1,pch=19,cex=1.8,col="blue"); lines(1:8,dc2,lwd=5,col="red"); points(1:8,dc2,pch=19,cex=1.8,col="red"); legend("top",c(expname1,expname2),lwd=4,col=c("blue","red"),cex=1.7,bty="n")
     }
     dev.off(); tmp <- paste0(file_out,".tmp.png"); compress(file_in=file_out,file_out=tmp); file.rename(tmp,file_out)
   }
@@ -922,9 +923,9 @@ if (length(wat_plot_variables) > 0) {
     par(mai=ts_panel_mai,family="Century Gothic")
     x <- seq_along(tt); yt <- axis_ticks(c(ts1,ts2),10)
     plot(x,type="n",axes=FALSE,ann=FALSE,ylim=range(yt$breaks),yaxs="i"); mtext("Time",1,ts_xlabel_line,cex=ts_xlabel_cex); mtext(get_wat_definition(logical_name)$title,2,ts_ylabel_line,cex=ts_ylabel_cex)
-    idx <- timeseries_axis_indices(tt); axis(1,at=x[idx],labels=format(tt[idx],"%Y-%m-%d"),cex.axis=ts_axis_cex,line=1,lty=0); axis(2,at=yt$breaks,labels=yt$labels,las=1,cex.axis=ts_axis_cex); box(); abline(h=yt$breaks,col="grey")
+    idx <- timeseries_axis_indices(tt); axis(1,at=x[idx],labels=format(tt[idx],"%Y-%m-%d"),cex.axis=ts_xaxis_cex,line=0,lty=0); axis(2,at=yt$breaks,labels=yt$labels,las=1,cex.axis=ts_yaxis_cex); box(); abline(h=yt$breaks,col="grey")
     lines(x,ts1,lwd=5,col="blue"); points(x,ts1,pch=19,cex=1.8,col="blue"); lines(x,ts2,lwd=5,col="red"); points(x,ts2,pch=19,cex=1.8,col="red"); add_mean_square(ts1,"blue"); add_mean_square(ts2,"red"); legend("top",c(expname1,expname2),lwd=4,col=c("blue","red"),cex=1.7,bty="n")
-    par(mai=ts_panel_mai,family="Century Gothic"); yd <- axis_ticks(c(dc1,dc2),10); plot(1:8,type="n",axes=FALSE,ann=FALSE,ylim=range(yd$breaks),yaxs="i"); mtext("Time (3 hourly UTC)",1,ts_xlabel_line,cex=ts_xlabel_cex); mtext(get_wat_definition(logical_name)$title,2,ts_ylabel_line,cex=ts_ylabel_cex); axis(1,at=1:8,labels=sprintf("%02d",hrs),cex.axis=ts_axis_cex,line=1,lty=0); axis(2,at=yd$breaks,labels=yd$labels,las=1,cex.axis=ts_axis_cex); box(); abline(h=yd$breaks,col="grey"); lines(1:8,dc1,lwd=5,col="blue"); points(1:8,dc1,pch=19,cex=1.8,col="blue"); lines(1:8,dc2,lwd=5,col="red"); points(1:8,dc2,pch=19,cex=1.8,col="red"); legend("top",c(expname1,expname2),lwd=4,col=c("blue","red"),cex=1.7,bty="n")
+    par(mai=ts_panel_mai,family="Century Gothic"); yd <- axis_ticks(c(dc1,dc2),10); plot(1:8,type="n",axes=FALSE,ann=FALSE,ylim=range(yd$breaks),yaxs="i"); mtext("Time (3 hourly UTC)",1,ts_xlabel_line,cex=ts_xlabel_cex); mtext(get_wat_definition(logical_name)$title,2,ts_ylabel_line,cex=ts_ylabel_cex); axis(1,at=1:8,labels=sprintf("%02d",hrs),cex.axis=ts_xaxis_cex,line=0,lty=0); axis(2,at=yd$breaks,labels=yd$labels,las=1,cex.axis=ts_yaxis_cex); box(); abline(h=yd$breaks,col="grey"); lines(1:8,dc1,lwd=5,col="blue"); points(1:8,dc1,pch=19,cex=1.8,col="blue"); lines(1:8,dc2,lwd=5,col="red"); points(1:8,dc2,pch=19,cex=1.8,col="red"); legend("top",c(expname1,expname2),lwd=4,col=c("blue","red"),cex=1.7,bty="n")
     dev.off(); tmp <- paste0(file_out,".tmp.png"); compress(file_in=file_out,file_out=tmp); file.rename(tmp,file_out)
   }
 }
@@ -1089,8 +1090,8 @@ if (length(column_plot_variables) > 0) {
     idx <- timeseries_axis_indices(tt)
 
     axis(1,at=x[idx],labels=format(tt[idx],"%Y-%m-%d"),
-         cex.axis=ts_axis_cex,line=1,lty=0)
-    axis(2,at=yt$breaks,labels=yt$labels,las=1,cex.axis=ts_axis_cex)
+         cex.axis=ts_xaxis_cex,line=0,lty=0)
+    axis(2,at=yt$breaks,labels=yt$labels,las=1,cex.axis=ts_yaxis_cex)
 
     box()
     abline(h=yt$breaks,col="grey")
@@ -1117,8 +1118,8 @@ if (length(column_plot_variables) > 0) {
     mtext(paste0(def$title," (",def$units,")"),2,ts_ylabel_line,cex=ts_ylabel_cex)
 
     axis(1,at=1:8,labels=sprintf("%02d",hrs),
-         cex.axis=ts_axis_cex,line=1,lty=0)
-    axis(2,at=yd$breaks,labels=yd$labels,las=1,cex.axis=ts_axis_cex)
+         cex.axis=ts_xaxis_cex,line=0,lty=0)
+    axis(2,at=yd$breaks,labels=yd$labels,las=1,cex.axis=ts_yaxis_cex)
 
     box()
     abline(h=yd$breaks,col="grey")
@@ -1305,10 +1306,10 @@ if (length(precip_variables) > 0) {
 
     axis(1,at=x[IDx_labels],
          labels=format(plot_tmean_tim[IDx_labels],"%Y-%m-%d"),
-         cex.axis=ts_axis_cex,line=1,lty=0)
+         cex.axis=ts_xaxis_cex,line=0,lty=0)
     axis(1,at=x[IDx_labels],labels=FALSE,tck=0.01)
     axis(1,at=x[IDx_labels],labels=FALSE,tck=-0.01)
-    axis(2,at=yseq$breaks,labels=yseq$labels,las=1,cex.axis=ts_axis_cex)
+    axis(2,at=yseq$breaks,labels=yseq$labels,las=1,cex.axis=ts_yaxis_cex)
 
     box(lwd=2)
     abline(h=yseq$breaks,lwd=1,col="grey")
@@ -1332,10 +1333,10 @@ if (length(precip_variables) > 0) {
     mtext("3-hour interval starting UTC",side=1,line=12,cex=3.5)
     mtext("Precipitation (mm / 3 h)",side=2,line=ts_ylabel_line,cex=ts_ylabel_cex)
 
-    axis(1,at=1:8,labels=c("00","03","06","09","12","15","18","21"),cex.axis=ts_axis_cex,line=1,lty=0)
+    axis(1,at=1:8,labels=c("00","03","06","09","12","15","18","21"),cex.axis=ts_xaxis_cex,line=0,lty=0)
     axis(1,at=1:8,labels=FALSE,tck=0.01)
     axis(1,at=1:8,labels=FALSE,tck=-0.01)
-    axis(2,at=yseq$breaks,labels=yseq$labels,las=1,cex.axis=ts_axis_cex)
+    axis(2,at=yseq$breaks,labels=yseq$labels,las=1,cex.axis=ts_yaxis_cex)
 
     box(lwd=2)
     abline(h=yseq$breaks,lwd=1,col="grey")
@@ -1577,11 +1578,11 @@ if (length(lifetime_variables) > 0) {
     axis(
       1,at=x[IDx_labels],
       labels=format(plot_tmean_tim[IDx_labels],"%Y-%m-%d"),
-      cex.axis=ts_axis_cex,line=1,lty=0
+      cex.axis=ts_xaxis_cex,line=0,lty=0
     )
     axis(1,at=x[IDx_labels],labels=FALSE,tck=0.01)
     axis(1,at=x[IDx_labels],labels=FALSE,tck=-0.01)
-    axis(2,at=yseq$breaks,labels=yseq$labels,las=1,cex.axis=ts_axis_cex)
+    axis(2,at=yseq$breaks,labels=yseq$labels,las=1,cex.axis=ts_yaxis_cex)
 
     box(lwd=2)
     abline(h=yseq$breaks,lwd=1,col="grey")
@@ -1617,11 +1618,11 @@ if (length(lifetime_variables) > 0) {
     axis(
       1,at=1:8,
       labels=c("00","03","06","09","12","15","18","21"),
-      cex.axis=ts_axis_cex,line=1,lty=0
+      cex.axis=ts_xaxis_cex,line=0,lty=0
     )
     axis(1,at=1:8,labels=FALSE,tck=0.01)
     axis(1,at=1:8,labels=FALSE,tck=-0.01)
-    axis(2,at=yseq$breaks,labels=yseq$labels,las=1,cex.axis=ts_axis_cex)
+    axis(2,at=yseq$breaks,labels=yseq$labels,las=1,cex.axis=ts_yaxis_cex)
 
     box(lwd=2)
     abline(h=yseq$breaks,lwd=1,col="grey")
@@ -1821,10 +1822,10 @@ if (length(dep_variables) > 0) {
     mtext(if (regional_mode) paste0(region," flux (Tg/day)") else "Global flux (Tg/day)",side=2,line=ts_ylabel_line,cex=ts_ylabel_cex)
 
     IDx_labels <- timeseries_axis_indices(tmean_tim)
-    axis(1,at=x[IDx_labels],labels=format(tmean_tim[IDx_labels],"%Y-%m-%d"),cex.axis=ts_axis_cex,line=1,lty=0)
+    axis(1,at=x[IDx_labels],labels=format(tmean_tim[IDx_labels],"%Y-%m-%d"),cex.axis=ts_xaxis_cex,line=0,lty=0)
     axis(1,at=x[IDx_labels],labels=FALSE,tck=0.01)
     axis(1,at=x[IDx_labels],labels=FALSE,tck=-0.01)
-    axis(2,at=yseq$breaks,labels=yseq$labels,las=1,cex.axis=ts_axis_cex)
+    axis(2,at=yseq$breaks,labels=yseq$labels,las=1,cex.axis=ts_yaxis_cex)
     box(lwd=2)
     abline(h=yseq$breaks,lwd=1,col="grey")
     abline(v=x[IDx_labels],lwd=1,col="grey")
@@ -1897,10 +1898,10 @@ if (length(dep_variables) > 0) {
     mtext("Time (3 hourly UTC)",side=1,line=ts_xlabel_line,cex=ts_xlabel_cex)
     mtext(if (regional_mode) paste0(region," flux (Tg/day)") else "Global flux (Tg/day)",side=2,line=ts_ylabel_line,cex=ts_ylabel_cex)
 
-    axis(1,at=1:8,labels=c("00","03","06","09","12","15","18","21"),cex.axis=ts_axis_cex,line=1,lty=0)
+    axis(1,at=1:8,labels=c("00","03","06","09","12","15","18","21"),cex.axis=ts_xaxis_cex,line=0,lty=0)
     axis(1,at=1:8,labels=FALSE,tck=0.01)
     axis(1,at=1:8,labels=FALSE,tck=-0.01)
-    axis(2,at=yseq$breaks,labels=yseq$labels,las=1,cex.axis=ts_axis_cex)
+    axis(2,at=yseq$breaks,labels=yseq$labels,las=1,cex.axis=ts_yaxis_cex)
 
     box(lwd=2)
     abline(h=yseq$breaks,lwd=1,col="grey")

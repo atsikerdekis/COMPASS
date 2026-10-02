@@ -227,6 +227,15 @@ get_ham_species_od_definition <- function(suffix) {
   x
 }
 
+### Species used by the derived AOD panel diagnostics.
+### This helper must live in 01.init.R because 02.start.R needs it in download mode,
+### before 04.preprocess.R is sourced.
+get_od_species_suffixes <- function(include_soa=TRUE) {
+  x <- c("ss","du","pom","bc","so4","ni","am")
+  if (include_soa) x <- c(x,"soa")
+  x
+}
+
 
 ############################
 ### HAM WATER DEFINITIONS ###

@@ -8,8 +8,8 @@ expname2  <- "jbjc"
 exptype2  <- "HAM"
 expclass2 <- "rd"
 ### Period
-sDate   <- "20190101"
-eDate   <- "20190103"
+sDate   <- "20190104"
+eDate   <- "20190531"
 ### Runtype
 runtype <- "download" # plot | download
 ### Other

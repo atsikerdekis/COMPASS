@@ -74,6 +74,15 @@ ts_yaxis_cex <- 3.0
 map_ylabel_cex <- 2.2
 map_title_cex <- 1.25
 
+panel_header_cex <- 4.8
+panel_map_title_cex <- 2.1
+panel_stats_cex <- 1.65
+panel_legend_cex <- 1.8
+panel_map_width <- 3.9
+panel_legend_width <- 0.8
+panel_map_height <- 2.1
+panel_header_height <- 0.50
+
 ########################
 ### HELPER FUNCTIONS ###
 ########################
@@ -252,16 +261,143 @@ get_panel_species_label <- function(x) {
          du = "DU",
          ss = "SS",
          pom = "POM",
-         soa = "SOA",
          bc = "BC",
          so4 = "SO4",
          ni = "NI",
          am = "AM",
          wat = "WAT",
+         blank = "",
          toupper(x))
 }
 
-plot_species_map_grid <- function(field_list, expname, exptype, panel_name, units=" ") {
+panel_tropomi_colors <- function(n) {
+  colorRampPalette(c(
+    "#EBF7FD","#C9EAFB","#ADE1F6","#9BD0EE","#89C3E6","#7EBAE2",
+    "#71AFDC","#60A3D5","#62B49B","#8ACE64","#D0DF6F","#FAE771",
+    "#FACD64","#F7B95B","#F8A750","#FB9548","#F6813F","#EA5B3E",
+    "#CA1112","#A30008","#820005","#640203","#4E0002","#360202",
+    "#240302","#100202"
+  ))(n)
+}
+
+panel_mnmb_colors <- function(n) {
+  colorRampPalette(c("navy","blue","lightskyblue","white","palevioletred1","red","red4"))(n)
+}
+
+panel_palette_colors <- function(name,n) {
+  if (name == "MNMB") return(panel_mnmb_colors(n))
+  panel_tropomi_colors(n)
+}
+
+panel_safe_positive_breaks <- function(fields,ncolors=200) {
+  vals <- unlist(fields,use.names=FALSE)
+  vals <- vals[is.finite(vals)]
+  if (length(vals) == 0) return(seq(0,1,length.out=ncolors+1))
+  positive_breaks(vals,ncolors=ncolors)
+}
+
+panel_format_stat <- function(x,percent=FALSE) {
+  if (!is.finite(x)) return("NA")
+  if (percent) return(paste0(formatC(x,format="f",digits=1),"%"))
+  format(x,scientific=TRUE,digits=2)
+}
+
+panel_draw_map <- function(field_value,lon,lat,breaks,palette_name,label,
+                           percent_stats=FALSE) {
+  if (regional_mode)
+    field_value <- mask_region_field(field_value,lon,lat,region_box)
+
+  MapNC(
+    filename_topo="",
+    figure_box=figure_box,
+    field_show_box=field_show_box,
+    coastlineWorldFine_lwd=coastlineWorldFine_lwd,
+    gridlines=gridlines,
+    projection=projection,
+    lonmax=lonmax,lonmin=lonmin,
+    latmax=latmax,latmin=latmin,
+    drawMapBox=regional_mode,
+    field_value=field_value,
+    field_lon=lon,
+    field_lat=lat,
+    field_pallete_name=palette_name,
+    field_breaks=breaks,
+    field_units="",
+    field_pallete_starting_alpha=100,
+    field_show_legend=FALSE,
+    field_value_mean_global=FALSE,
+    title_main=""
+  )
+
+  if (nzchar(label)) {
+    usr <- par("usr")
+    dx <- usr[2]-usr[1]
+    dy <- usr[4]-usr[3]
+
+    ### Lower, smaller title than the standard MapNC title.
+    tx <- usr[1]+0.015*dx
+    ty <- usr[4]-0.055*dy
+    text(tx,ty,label,adj=c(0,1),cex=panel_map_title_cex,
+         font=2,family="Century Gothic",col="white")
+    text(tx+0.002*dx,ty-0.002*dy,label,adj=c(0,1),cex=panel_map_title_cex,
+         font=2,family="Century Gothic",col="grey15")
+
+    mn <- mean(field_value,na.rm=TRUE)
+    sdv <- sd(field_value,na.rm=TRUE)
+    if (is.nan(mn)) mn <- NA_real_
+    if (is.nan(sdv)) sdv <- NA_real_
+
+    sy <- usr[3]+0.055*dy
+    text(usr[1]+0.035*dx,sy,
+         paste0("MN\n",panel_format_stat(mn,percent_stats)),
+         adj=c(0,0),cex=panel_stats_cex,family="Century Gothic")
+    text(usr[2]-0.035*dx,sy,
+         paste0("SD\n",panel_format_stat(sdv,percent_stats)),
+         adj=c(1,0),cex=panel_stats_cex,family="Century Gothic")
+  }
+}
+
+panel_draw_legend <- function(breaks,palette_name,units="",percent=FALSE) {
+  cols <- panel_palette_colors(palette_name,length(breaks)-1)
+  par(mar=c(0.55,0.05,0.75,2.8),family="Century Gothic")
+  plot.new()
+  plot.window(xlim=c(0,1),ylim=range(breaks),xaxs="i",yaxs="i")
+  rect(0,breaks[-length(breaks)],1,breaks[-1],col=cols,border=NA)
+
+  at <- seq(min(breaks),max(breaks),length.out=5)
+  if (percent) {
+    labs <- formatC(at,format="f",digits=0)
+  } else {
+    labs <- format(at,scientific=TRUE,digits=2)
+  }
+  axis(4,at=at,labels=labs,las=1,cex.axis=panel_legend_cex,tck=-0.05)
+  if (nzchar(units))
+    mtext(units,side=3,line=-0.1,adj=1,cex=panel_legend_cex/1.4,family="Century Gothic")
+  box(lwd=1.5)
+}
+
+panel_validation_plot_settings <- function(variable,kind) {
+  if (variable == "AOD550") {
+    if (kind == "obs") return(list(
+      breaks=c(0.00,0.05,0.10,0.15,0.20,0.25,0.30,0.35,0.40,0.50,0.60,0.80,1.00),
+      palette="TROPOMI_NEW",units=""))
+    if (kind == "me") return(list(
+      breaks=seq(-0.8,0.8,length.out=201),palette="MNMB",units=""))
+    return(list(breaks=seq(0,1.0,length.out=201),palette="TROPOMI_NEW",units=""))
+  }
+
+  if (variable == "AE550to860") {
+    if (kind == "obs") return(list(
+      breaks=seq(0,2.0,length.out=201),palette="TROPOMI_NEW",units=""))
+    if (kind == "me") return(list(
+      breaks=seq(-1,1,length.out=201),palette="MNMB",units=""))
+    return(list(breaks=seq(0,1.0,length.out=201),palette="TROPOMI_NEW",units=""))
+  }
+
+  stop("No validation plot settings for ",variable)
+}
+
+plot_species_map_grid <- function(field_list,validation,expname,exptype,panel_name,units=" ") {
   title_text <- get_panel_species_definition(panel_name)$title
   plot_dir <- make_plot_dir("optics")
   file_out <- paste0(
@@ -269,89 +405,89 @@ plot_species_map_grid <- function(field_list, expname, exptype, panel_name, unit
   )
 
   if (length(field_list) != 9)
-    stop("Species panel plot requires exactly 9 fields; found ",length(field_list)," for ",panel_name," / ",expname)
+    stop("Species panel plot requires exactly 9 fields; found ",length(field_list),
+         " for ",panel_name," / ",expname)
 
-  ### MapNC with field_show_legend=TRUE consumes two layout cells:
-  ### first the map, then its colour bar. Reserve those cells explicitly.
+  ratio_panel <- panel_name %in% c("aodratio_per_species","massratio_per_species")
+
+  ### Convert all ratio panels, including TOTAL, to percent before computing
+  ### statistics and plotting. This gives one 0--100% scale everywhere.
+  if (ratio_panel)
+    field_list <- lapply(field_list,function(x) x*100)
+
+  populated <- field_list[names(field_list) != "blank"]
+  species_breaks <- if (ratio_panel) seq(0,100,length.out=201) else
+    panel_safe_positive_breaks(populated,200)
+
+  species_units <- if (ratio_panel) "%" else units
+
+  ### Title + 4 map rows. Every map has its own narrow legend cell.
   panel_layout <- matrix(
     c(
       1,1,1,1,1,1,
       2,3,4,5,6,7,
       8,9,10,11,12,13,
-      14,15,16,17,18,19
+      14,15,16,17,18,19,
+      20,21,22,23,24,25
     ),
-    nrow=4,byrow=TRUE
+    nrow=5,byrow=TRUE
   )
 
-  ### Match the horizontal proportions used by the standard COMPASS maps:
-  ### 3.9 for each map and 0.8 for each colour bar.
-  ### Three map rows use the standard ~2-unit map height.
   dpi <- 300
-  panel_width  <- 3*(3.9+0.8)
-  panel_height <- 0.35 + 3*2.1
+  panel_width <- 3*(panel_map_width+panel_legend_width)
+  panel_height <- panel_header_height+4*panel_map_height
   png(file_out,width=panel_width*dpi,height=panel_height*dpi)
   layout(
     panel_layout,
-    widths=c(3.9,0.8,3.9,0.8,3.9,0.8),
-    heights=c(0.35,2.1,2.1,2.1)
+    widths=rep(c(panel_map_width,panel_legend_width),3),
+    heights=c(panel_header_height,rep(panel_map_height,4))
   )
 
-  par(mai=c(0,0,0,0))
+  par(mai=c(0,0,0,0),family="Century Gothic")
   plot.new()
   text(
     0.5,0.5,
     paste0(
       "Experiment: ",expname," (",exptype,")   |   Type: ",title_text,
+      "   |   Validation: ",panel_validation_variable,
+      " (",paste(panel_satellites,collapse="+"),")",
       region_title,"   |   Period: ",sDate,"-",eDate
     ),
-    col="grey40",cex=2.4,family="Century Gothic"
+    col="grey40",cex=panel_header_cex,family="Century Gothic"
   )
   abline(h=c(0,1),col="grey50",lwd=2)
 
-  ratio_panel <- panel_name %in% c("aodratio_per_species","massratio_per_species")
+  ### Row 1: satellite ensemble, model mean error, model MAE.
+  validation_fields <- list(
+    "SAT ENSEMBLE"=validation$obs,
+    "ME"=validation$me,
+    "MAE"=validation$mae
+  )
+  validation_kinds <- c("obs","me","mae")
+  for (i in seq_along(validation_fields)) {
+    settings <- panel_validation_plot_settings(panel_validation_variable,validation_kinds[i])
+    panel_draw_map(
+      validation_fields[[i]],validation$lon,validation$lat,
+      settings$breaks,settings$palette,names(validation_fields)[i],FALSE
+    )
+    panel_draw_legend(settings$breaks,settings$palette,settings$units,FALSE)
+  }
 
+  ### Rows 2--4: species fields, one identical scale for all populated panels.
   for (nm in names(field_list)) {
-    field_value <- field_list[[nm]]
-    if (regional_mode)
-      field_value <- mask_region_field(field_value,field_lon,field_lat,region_box)
-
-    local_units <- units
-
-    ### The TOTAL panel remains the physical total field (AOD550 or total mass).
-    ### Species ratio panels are displayed as percentages, not fractions.
-    if (ratio_panel && nm != "total") {
-      field_value <- field_value*100
-      br <- seq(0,100,length.out=201)
-      local_units <- "%"
-    } else {
-      br <- positive_breaks(field_value,200)
+    label <- get_panel_species_label(nm)
+    if (nm == "blank") {
+      par(mai=c(0,0,0,0)); plot.new()
+      par(mai=c(0,0,0,0)); plot.new()
+      next
     }
 
-    MapNC(
-      filename_topo="",
-      figure_box=figure_box,
-      field_show_box=field_show_box,
-      coastlineWorldFine_lwd=coastlineWorldFine_lwd,
-      gridlines=gridlines,
-      projection=projection,
-      lonmax=lonmax,lonmin=lonmin,
-      latmax=latmax,latmin=latmin,
-      drawMapBox=regional_mode,
-      field_value=field_value,
-      field_lon=field_lon,
-      field_lat=field_lat,
-      field_pallete_name="TROPOMI_NEW",
-      field_breaks=br,
-      field_units=local_units,
-      field_pallete_starting_alpha=100,
-      field_show_legend=TRUE,
-      field_legend_cex=2.0,
-      field_legend_mai_right=1.8,
-      field_legend_mai_top=0.15,
-      field_legend_nlabels=5,
-      title_main=get_panel_species_label(nm),
-      col_title="grey20",
-      col_title_shadow="white"
+    panel_draw_map(
+      field_list[[nm]],field_lon,field_lat,
+      species_breaks,"TROPOMI_NEW",label,ratio_panel
+    )
+    panel_draw_legend(
+      species_breaks,"TROPOMI_NEW",species_units,ratio_panel
     )
   }
 
@@ -925,29 +1061,32 @@ if (length(optical_plot_variables) > 0) {
 if (length(panel_species_plot_variables) > 0) {
   for (logical_name in panel_species_plot_variables) {
     panel_base <- tolower(strip_time_aggregation(logical_name))
-    message("---> Plotting ", logical_name, if (regional_mode) paste0(" for ", region) else "")
+    message("---> Plotting ",logical_name,if (regional_mode) paste0(" for ",region) else "")
 
-    if (panel_base %in% c("mass_per_species","massratio_per_species")) {
-      ref_table <- resolve_variables(exptype1,"mss_ss")
-      ref_file <- variable_file("mss_ss",ref_table,expname1,seqDate[1])
-    } else {
-      ref_file <- optics_file(expname1,seqDate[1])
-    }
-
+    ### The optical validation file is guaranteed by 02.start.R for every
+    ### multi-panel figure, so it is a stable source of the model grid.
+    ref_file <- optics_file(expname1,seqDate[1])
     if (!file.exists(ref_file))
-      stop("Reference file for multi-panel species plot not found: ",ref_file)
+      stop("Optics reference file for multi-panel species plot not found: ",ref_file)
     ll <- read_lon_lat(ref_file)
-    field_lon <- ll$lon; field_lat <- ll$lat
+    field_lon <- ll$lon
+    field_lat <- ll$lat
 
-    maps1 <- build_panel_species_maps(expname1, exptype1, seqDate, panel_base)
-    maps2 <- build_panel_species_maps(expname2, exptype2, seqDate, panel_base)
+    maps1 <- build_panel_species_maps(expname1,exptype1,seqDate,panel_base)
+    maps2 <- build_panel_species_maps(expname2,exptype2,seqDate,panel_base)
 
-    units <- " "
-    if (panel_base %in% c("mass_per_species","massratio_per_species")) units <- if (panel_base == "massratio_per_species") "fraction" else "kg m^-2"
+    ### Validation is experiment-specific because ME/MAE use that experiment,
+    ### while the satellite ensemble itself is identical in both figures.
+    validation1 <- build_panel_satellite_validation(expname1,seqDate,panel_validation_variable)
+    validation2 <- build_panel_satellite_validation(expname2,seqDate,panel_validation_variable)
+
+    units <- ""
+    if (panel_base == "mass_per_species") units <- "kg m^-2"
     if (panel_base == "mec_per_species") units <- "m2 g^-1"
+    if (panel_base %in% c("aodratio_per_species","massratio_per_species")) units <- "%"
 
-    plot_species_map_grid(maps1, expname1, exptype1, panel_base, units=units)
-    plot_species_map_grid(maps2, expname2, exptype2, panel_base, units=units)
+    plot_species_map_grid(maps1,validation1,expname1,exptype1,panel_base,units=units)
+    plot_species_map_grid(maps2,validation2,expname2,exptype2,panel_base,units=units)
   }
 }
 

@@ -64,6 +64,10 @@ variable_file <- function(logical_name,variable_table,expname,date) {
 
   stream <- variable_stream(logical_name,variable_table)
 
+  if (length(stream) != 1 || is.na(stream))
+    stop("Could not determine stream for variable '",logical_name,
+         "'. Resolve the variable before calling variable_file().")
+
   if (stream == "pl") return(paste0(path_data,expname,"/CAMS_",expname,"_forecast00to21by03_0.7x0.7_pl_",date,".nc"))
   if (stream == "sfc") return(paste0(path_data,expname,"/CAMS_",expname,"_forecast00to21by03_0.7x0.7_sfc_",date,".nc"))
 
@@ -549,118 +553,304 @@ read_total_column <- function(expname,date,logical_name) {
 #########################################
 ### MULTI-PANEL SPECIES-MAP FUNCTIONS ###
 #########################################
-get_panel_species_list <- function(exptype, panel_base) {
+
+panel_display_species <- function(exptype,panel_base) {
   panel_base <- tolower(strip_time_aggregation(panel_base))
 
-  if (panel_base %in% c("aod_per_species","aodratio_per_species")) {
-    if (exptype == "HAM") return(c("total","du","ss","pom","bc","so4","ni","am","wat"))
-    return(c("total","du","ss","pom","soa","bc","so4","ni","am"))
-  }
+  ### Requested display order. SOA is never shown separately.
+  if (panel_base %in% c("aod_per_species","aodratio_per_species") && exptype == "HAM")
+    return(c("total","du","ss","pom","bc","so4","ni","am","wat"))
 
-  if (panel_base %in% c("mass_per_species","massratio_per_species","mec_per_species")) {
-    return(c("total","du","ss","pom","soa","bc","so4","ni","am"))
-  }
+  ### AER and the mass/MEC panels have eight populated slots; the ninth
+  ### position is intentionally blank so every figure keeps the same 3x3 grid.
+  c("total","du","ss","pom","bc","so4","ni","am","blank")
+}
 
-  stop("Unsupported panel species base: ",panel_base)
+panel_stack_fields <- function(field_list) {
+  if (length(field_list) == 0) stop("Cannot stack an empty field list.")
+  nx <- dim(field_list[[1]])[1]
+  ny <- dim(field_list[[1]])[2]
+  nt <- sum(sapply(field_list,function(x) dim(x)[3]))
+  array(unlist(field_list),dim=c(nx,ny,nt))
+}
+
+panel_mean_stack <- function(field_list) {
+  out <- apply(panel_stack_fields(field_list),c(1,2),mean,na.rm=TRUE)
+  out[is.nan(out)] <- NA_real_
+  out
+}
+
+panel_add_fields <- function(a,b) {
+  if (is.null(a)) return(b)
+  if (is.null(b)) return(a)
+  both_na <- is.na(a) & is.na(b)
+  aa <- a; bb <- b
+  aa[is.na(aa)] <- 0
+  bb[is.na(bb)] <- 0
+  out <- aa+bb
+  out[both_na] <- NA_real_
+  out
 }
 
 read_single_species_mass <- function(expname,date,exptype,suffix) {
   lname <- paste0("mss_",suffix)
-  table <- tryCatch(resolve_variables(exptype,lname), error=function(e) data.frame())
-  if (nrow(table) == 0) stop("Mass burden variable not available: ",lname," for ",exptype)
+  table <- resolve_variables(exptype,lname)
+  if (nrow(table) == 0)
+    stop("Mass burden variable not available: ",lname," for ",exptype)
   file <- variable_file(lname,table,expname,date)
+  if (!file.exists(file)) stop("Mass input file not found: ",file)
   read_variable(file,exptype,lname,table)
 }
 
-build_panel_species_maps <- function(expname, exptype, dates, panel_base) {
+build_panel_species_maps <- function(expname,exptype,dates,panel_base) {
   panel_base <- tolower(strip_time_aggregation(panel_base))
-  species_order <- get_panel_species_list(exptype,panel_base)
+  display_order <- panel_display_species(exptype,panel_base)
   out <- list()
 
-  stack_fields <- function(field_list) {
-    nx <- dim(field_list[[1]])[1]
-    ny <- dim(field_list[[1]])[2]
-    nt <- sum(sapply(field_list,function(x) dim(x)[3]))
-    array(unlist(field_list),dim=c(nx,ny,nt))
-  }
-  mean_stack <- function(field_list) apply(stack_fields(field_list),c(1,2),mean,na.rm=TRUE)
+  need_aod <- panel_base %in% c("aod_per_species","aodratio_per_species","mec_per_species")
+  need_mass <- panel_base %in% c("mass_per_species","massratio_per_species","mec_per_species")
 
   total_aod <- NULL
   species_aod <- list()
   species_mass <- list()
   total_mass <- NULL
 
-  if (panel_base %in% c("aod_per_species","aodratio_per_species","mec_per_species")) {
-    total_aod <- mean_stack(lapply(dates,function(d) read_direct_optical(expname,d,"207.210")))
-  }
+  if (need_aod) {
+    total_aod <- panel_mean_stack(lapply(dates,function(d) read_direct_optical(expname,d,"207.210")))
 
-  aod_species_needed <- setdiff(species_order,c("total","wat"))
-  if (length(aod_species_needed) > 0 && panel_base %in% c("aod_per_species","aodratio_per_species","mec_per_species")) {
     comps_per_day <- lapply(dates,function(d) read_species_od_components(expname,d,exptype))
-    for (suffix in aod_species_needed) {
-      species_aod[[suffix]] <- mean_stack(lapply(comps_per_day,function(x) x[[suffix]]))
+    for (suffix in c("du","ss","pom","bc","so4","ni","am","soa")) {
+      vals <- lapply(comps_per_day,function(x) x[[suffix]])
+      vals <- vals[!vapply(vals,is.null,logical(1))]
+      if (length(vals) > 0) species_aod[[suffix]] <- panel_mean_stack(vals)
     }
-  }
-  if ("wat" %in% species_order) {
-    species_aod[["wat"]] <- mean_stack(lapply(dates,function(d) read_water_aod(expname,d,"wat")))
+
+    ### For AER, displayed POM is primary OM + SOA.
+    if (exptype == "AER")
+      species_aod[["pom"]] <- panel_add_fields(species_aod[["pom"]],species_aod[["soa"]])
+    species_aod[["soa"]] <- NULL
+
+    if (exptype == "HAM" && panel_base %in% c("aod_per_species","aodratio_per_species"))
+      species_aod[["wat"]] <- panel_mean_stack(lapply(dates,function(d) read_water_aod(expname,d,"wat")))
   }
 
-  if (panel_base %in% c("mass_per_species","massratio_per_species","mec_per_species")) {
-    mass_species <- setdiff(species_order,"total")
-    for (suffix in mass_species) {
-      species_mass[[suffix]] <- mean_stack(lapply(dates,function(d) read_single_species_mass(expname,d,exptype,suffix)))
+  if (need_mass) {
+    ### Read SOA even though it is not displayed separately. It remains part
+    ### of the physical total burden; for AER it is folded into displayed POM.
+    for (suffix in c("du","ss","pom","bc","so4","ni","am","soa")) {
+      vals <- lapply(dates,function(d) read_single_species_mass(expname,d,exptype,suffix))
+      species_mass[[suffix]] <- panel_mean_stack(vals)
     }
+
     total_mass <- NULL
-    for (suffix in names(species_mass)) {
-      if (is.null(total_mass)) total_mass <- species_mass[[suffix]] else total_mass <- total_mass + species_mass[[suffix]]
-    }
+    for (suffix in names(species_mass))
+      total_mass <- panel_add_fields(total_mass,species_mass[[suffix]])
+
+    if (exptype == "AER")
+      species_mass[["pom"]] <- panel_add_fields(species_mass[["pom"]],species_mass[["soa"]])
+    species_mass[["soa"]] <- NULL
   }
 
   if (panel_base == "aod_per_species") {
     out[["total"]] <- total_aod
-    for (suffix in species_order[species_order != "total"]) out[[suffix]] <- species_aod[[suffix]]
-    return(out)
+    for (nm in setdiff(display_order,c("total","blank"))) out[[nm]] <- species_aod[[nm]]
   }
 
   if (panel_base == "aodratio_per_species") {
-    out[["total"]] <- total_aod
-    for (suffix in species_order[species_order != "total"]) {
-      x <- species_aod[[suffix]] / total_aod
+    total_ratio <- total_aod/total_aod
+    total_ratio[!is.finite(total_ratio)] <- NA_real_
+    out[["total"]] <- total_ratio
+    for (nm in setdiff(display_order,c("total","blank"))) {
+      x <- species_aod[[nm]]/total_aod
       x[!is.finite(x) | x < 0] <- NA_real_
-      out[[suffix]] <- x
+      out[[nm]] <- x
     }
-    return(out)
   }
 
   if (panel_base == "mass_per_species") {
     out[["total"]] <- total_mass
-    for (suffix in species_order[species_order != "total"]) out[[suffix]] <- species_mass[[suffix]]
-    return(out)
+    for (nm in setdiff(display_order,c("total","blank"))) out[[nm]] <- species_mass[[nm]]
   }
 
   if (panel_base == "massratio_per_species") {
-    out[["total"]] <- total_mass
-    for (suffix in species_order[species_order != "total"]) {
-      x <- species_mass[[suffix]] / total_mass
+    total_ratio <- total_mass/total_mass
+    total_ratio[!is.finite(total_ratio)] <- NA_real_
+    out[["total"]] <- total_ratio
+    for (nm in setdiff(display_order,c("total","blank"))) {
+      x <- species_mass[[nm]]/total_mass
       x[!is.finite(x) | x < 0] <- NA_real_
-      out[[suffix]] <- x
+      out[[nm]] <- x
     }
-    return(out)
   }
 
   if (panel_base == "mec_per_species") {
-    total_mec <- total_aod / (total_mass * 1000)
-    total_mec[!is.finite(total_mec) | total_mec < 0] <- NA_real_
+    total_mec <- total_aod/(total_mass*1000)
+    total_mec[!is.finite(total_mec) | total_mec < 0 | total_aod < 0.05] <- NA_real_
     out[["total"]] <- total_mec
-    for (suffix in species_order[species_order != "total"]) {
-      x <- species_aod[[suffix]] / (species_mass[[suffix]] * 1000)
-      x[!is.finite(x) | x < 0] <- NA_real_
-      out[[suffix]] <- x
+
+    for (nm in setdiff(display_order,c("total","blank"))) {
+      aod <- species_aod[[nm]]
+      mass <- species_mass[[nm]]
+      x <- aod/(mass*1000)
+      x[!is.finite(x) | x < 0 | aod < 0.05] <- NA_real_
+      out[[nm]] <- x
     }
-    return(out)
   }
 
-  stop("Unsupported panel base: ",panel_base)
+  ### Return exactly nine ordered map slots.
+  template <- out[["total"]]
+  ordered <- list()
+  for (nm in display_order) {
+    if (nm == "blank" || is.null(out[[nm]])) {
+      blank <- template
+      blank[] <- NA_real_
+      ordered[[nm]] <- blank
+    } else {
+      ordered[[nm]] <- out[[nm]]
+    }
+  }
+  ordered
+}
+
+############################################
+### SATELLITE PANEL VALIDATION FUNCTIONS ###
+############################################
+
+panel_satellite_file <- function(sensor,date) {
+  def <- get_panel_satellite_definition(sensor)
+  paste0(panel_satellite_path,def$file_prefix,date,"_3H.nc")
+}
+
+read_panel_satellite_field <- function(sensor,date,variable=panel_validation_variable) {
+  def <- get_panel_validation_definition(variable)
+  file <- panel_satellite_file(sensor,date)
+  if (!file.exists(file)) {
+    warning("Satellite panel file not found: ",file)
+    return(NULL)
+  }
+
+  nc <- nc_open(file)
+  on.exit(nc_close(nc))
+
+  vname <- paste0(sensor,"_",variable,"_mn")
+  if (!vname %in% names(nc$var)) {
+    warning("Satellite variable ",vname," not found in ",file)
+    return(NULL)
+  }
+
+  field <- drop(ncvar_get(nc,vname))
+  if (length(dim(field)) != 3)
+    stop("Unexpected satellite dimensions for ",vname," in ",file,": ",paste(dim(field),collapse="x"))
+
+  if (variable == "AE550to860") {
+    aod_name <- paste0(sensor,"_AOD550_mn")
+    if (!aod_name %in% names(nc$var))
+      stop("AOD550 field required to filter ",vname," is missing in ",file)
+    aod <- drop(ncvar_get(nc,aod_name))
+    field[!is.finite(aod) | aod < def$aod_filter] <- NA_real_
+  }
+
+  lon <- ncvar_get(nc,"longitude")
+  lat <- ncvar_get(nc,"latitude")
+  list(field=field,lon=lon,lat=lat)
+}
+
+panel_array_ensemble_mean <- function(fields) {
+  fields <- fields[!vapply(fields,is.null,logical(1))]
+  if (length(fields) == 0) return(NULL)
+
+  refdim <- dim(fields[[1]])
+  if (any(!vapply(fields,function(x) identical(dim(x),refdim),logical(1))))
+    stop("Satellite ensemble fields do not share the same dimensions.")
+
+  total <- array(0,dim=refdim)
+  count <- array(0L,dim=refdim)
+  for (x in fields) {
+    ok <- is.finite(x)
+    total[ok] <- total[ok]+x[ok]
+    count[ok] <- count[ok]+1L
+  }
+  out <- total/count
+  out[count == 0] <- NA_real_
+  out
+}
+
+panel_nearest_lon_index <- function(source_lon,target_lon) {
+  src <- source_lon %% 360
+  trg <- target_lon %% 360
+  vapply(trg,function(x) which.min(abs(((src-x+180) %% 360)-180)),integer(1))
+}
+
+panel_nearest_lat_index <- function(source_lat,target_lat) {
+  vapply(target_lat,function(x) which.min(abs(source_lat-x)),integer(1))
+}
+
+panel_model_to_satellite_grid <- function(field,model_lon,model_lat,sat_lon,sat_lat) {
+  ilon <- panel_nearest_lon_index(model_lon,sat_lon)
+  ilat <- panel_nearest_lat_index(model_lat,sat_lat)
+  field[ilon,ilat,,drop=FALSE]
+}
+
+read_panel_validation_model <- function(expname,date,variable=panel_validation_variable) {
+  def <- get_panel_validation_definition(variable)
+  if (def$model_variable == "aod550") return(read_direct_optical(expname,date,"207.210"))
+  if (def$model_variable == "ae550to865") return(read_optical_property(expname,date,"ae550to865"))
+  stop("Unsupported panel model validation variable: ",def$model_variable)
+}
+
+build_panel_satellite_validation <- function(expname,dates,variable=panel_validation_variable) {
+  obs_days <- list()
+  mod_days <- list()
+  sat_lon <- sat_lat <- NULL
+
+  model_ll <- NULL
+  for (d in dates) {
+    sensor_data <- lapply(panel_satellites,function(s) read_panel_satellite_field(s,d,variable))
+    sensor_data <- sensor_data[!vapply(sensor_data,is.null,logical(1))]
+    if (length(sensor_data) == 0) {
+      warning("No satellite panel data available for date ",d)
+      next
+    }
+
+    if (is.null(sat_lon)) {
+      sat_lon <- sensor_data[[1]]$lon
+      sat_lat <- sensor_data[[1]]$lat
+    }
+
+    obs <- panel_array_ensemble_mean(lapply(sensor_data,function(x) x[["field"]]))
+    if (is.null(obs)) next
+
+    model <- read_panel_validation_model(expname,d,variable)
+    if (is.null(model_ll)) {
+      nc <- nc_open(optics_file(expname,d))
+      model_ll <- list(lon=ncvar_get(nc,"longitude"),lat=ncvar_get(nc,"latitude"))
+      nc_close(nc)
+    }
+
+    model_sat <- panel_model_to_satellite_grid(model,model_ll$lon,model_ll$lat,sat_lon,sat_lat)
+    nt <- min(dim(obs)[3],dim(model_sat)[3])
+    obs <- obs[,,seq_len(nt),drop=FALSE]
+    model_sat <- model_sat[,,seq_len(nt),drop=FALSE]
+    model_sat[!is.finite(obs)] <- NA_real_
+
+    obs_days[[length(obs_days)+1]] <- obs
+    mod_days[[length(mod_days)+1]] <- model_sat
+  }
+
+  if (length(obs_days) == 0)
+    stop("No satellite data available for panel validation over ",paste(range(dates),collapse="-"))
+
+  obs_stack <- panel_stack_fields(obs_days)
+  mod_stack <- panel_stack_fields(mod_days)
+
+  obs_mean <- apply(obs_stack,c(1,2),mean,na.rm=TRUE)
+  me <- apply(mod_stack-obs_stack,c(1,2),mean,na.rm=TRUE)
+  mae <- apply(abs(mod_stack-obs_stack),c(1,2),mean,na.rm=TRUE)
+  obs_mean[is.nan(obs_mean)] <- NA_real_
+  me[is.nan(me)] <- NA_real_
+  mae[is.nan(mae)] <- NA_real_
+
+  list(obs=obs_mean,me=me,mae=mae,lon=sat_lon,lat=sat_lat)
 }
 
 #################################

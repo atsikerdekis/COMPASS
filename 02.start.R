@@ -246,11 +246,18 @@ if (runtype == "download") {
 
 
 ### Optical-property diagnostics
+### Multi-panel species figures always include a satellite-validation row, so
+### its model-side optical dependencies are added even for MASS-only panels.
 params_optics <- ""
-if (length(optical_variables) > 0 || any(panel_bases %in% c("aod_per_species","aodratio_per_species","mec_per_species"))) {
+if (length(optical_variables) > 0 || length(panel_species_variables) > 0) {
   optical_need <- optical_variables
+
   if (any(panel_bases %in% c("aod_per_species","aodratio_per_species","mec_per_species")))
     optical_need <- unique(c(optical_need,"aod550"))
+
+  if (length(panel_species_variables) > 0)
+    optical_need <- unique(c(optical_need,get_panel_validation_definition()$model_variable))
+
   params_optics <- paste(get_optical_required_gribs(optical_need),collapse="/")
 }
 

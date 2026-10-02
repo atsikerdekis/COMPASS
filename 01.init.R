@@ -184,6 +184,62 @@ get_panel_species_definition <- function(logical_name) {
   x
 }
 
+#############################################
+### PANEL SATELLITE VALIDATION DEFINITIONS ###
+#############################################
+### Optional validation row used by the multi-panel species figures.
+### Defaults reproduce the MODIS/VIIRS ensemble used in the
+### SatelliteEvaluationTool workflow, while allowing config.R to override them.
+if (!exists("panel_validation_variable")) panel_validation_variable <- "AOD550"
+if (!exists("panel_satellites")) panel_satellites <- c("MOD","MYD","VIIRS_SNPP")
+if (!exists("panel_satellite_path"))
+  panel_satellite_path <- "/perm/nktt/SatelliteEvaluationTool/data/output/nc/3H/"
+
+panel_validation_definitions <- data.frame(
+  variable       = c("AOD550","AE550to860"),
+  model_variable = c("aod550","ae550to865"),
+  aod_filter     = c(0.0,0.2),
+  title          = c("AOD550","AE550to860"),
+  stringsAsFactors = FALSE
+)
+
+panel_satellite_definitions <- data.frame(
+  sensor = c("MOD","MYD","VIIRS_SNPP"),
+  file_prefix = c(
+    "MOD04_L2_AOD_0.4x0.4_",
+    "MYD04_L2_AOD_0.4x0.4_",
+    "VIIRS_SNPP_L2_AOD_0.4x0.4_"
+  ),
+  stringsAsFactors = FALSE
+)
+
+get_panel_validation_definition <- function(variable=panel_validation_variable) {
+  x <- panel_validation_definitions[panel_validation_definitions$variable == variable,,drop=FALSE]
+  if (nrow(x) != 1)
+    stop("Unsupported panel_validation_variable: ",variable,
+         ". Available: ",paste(panel_validation_definitions$variable,collapse=", "))
+  x
+}
+
+get_panel_satellite_definition <- function(sensor) {
+  x <- panel_satellite_definitions[panel_satellite_definitions$sensor == sensor,,drop=FALSE]
+  if (nrow(x) != 1)
+    stop("Unsupported panel satellite: ",sensor,
+         ". Available: ",paste(panel_satellite_definitions$sensor,collapse=", "))
+  x
+}
+
+get_panel_validation_required_gribs <- function(variable=panel_validation_variable) {
+  def <- get_panel_validation_definition(variable)
+  if (def$model_variable == "aod550") return("207.210")
+  if (def$model_variable == "ae550to865") return(c("207.210","215.210"))
+  stop("No GRIB dependency mapping for panel validation variable: ",variable)
+}
+
+### Fail early if the config contains unsupported validation settings.
+get_panel_validation_definition(panel_validation_variable)
+invisible(lapply(panel_satellites,get_panel_satellite_definition))
+
 get_optical_required_gribs <- function(logical_names) {
   logical_names <- strip_time_aggregation(logical_names)
   gribs <- character(0)
@@ -694,6 +750,9 @@ if (length(optical_variables) > 0) {
 }
 if (length(panel_species_variables) > 0) {
   message("---> Multi-panel species maps: ",paste(panel_species_variables,collapse=", "))
+  message("---> Panel validation: ",panel_validation_variable,
+          " using ",paste(panel_satellites,collapse="+"),
+          " from ",panel_satellite_path)
 }
 if (length(column_variables) > 0) {
   column_info <- sapply(column_variables,function(x) {

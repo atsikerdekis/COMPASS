@@ -1,8 +1,8 @@
 ### EXPERIMENT SETTINGS
 ### Experiment 1 (control/reference)
-expname1  <- "iyfb"
-exptype1  <- "AER"
-expclass1 <- "rd"
+expname1  <- "iyfb" #"jbjc" #"iyfb"
+exptype1  <- "AER"  #"HAM"  #"AER"
+expclass1 <- "rd"   #"rd"   #"rd"
 ### Experiment 2
 expname2  <- "jbjc"
 exptype2  <- "HAM"
@@ -28,10 +28,10 @@ region <- "global"
 ### VARIABLES
 variables <- c(
   "AOD_per_species",
-  "AODratio_per_species",
-  "MASS_per_species",
-  "MASSratio_per_species",
-  "MEC_per_species"
+  "AODratio_per_species"
+#  "MASS_per_species",
+#  "MASSratio_per_species",
+#  "MEC_per_species"
 )
 
 #variables <- c(

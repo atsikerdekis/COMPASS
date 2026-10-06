@@ -75,9 +75,9 @@ map_ylabel_cex <- 2.2
 map_title_cex <- 1.25
 
 panel_header_cex <- 4.8
-panel_map_title_cex <- 2.1
-panel_stats_cex <- 1.65
-panel_legend_cex <- 1.8
+panel_map_title_cex <- 3.6
+panel_stats_cex <- 2.8
+panel_legend_cex <- 2.35
 panel_map_width <- 3.9
 panel_legend_width <- 0.8
 panel_map_height <- 2.1
@@ -284,8 +284,13 @@ panel_mnmb_colors <- function(n) {
   colorRampPalette(c("navy","blue","lightskyblue","white","palevioletred1","red","red4"))(n)
 }
 
+panel_fge_colors <- function(n) {
+  colorRampPalette(rev(c("darkred","red","orange","yellow","greenyellow","green3","green4")))(n)
+}
+
 panel_palette_colors <- function(name,n) {
   if (name == "MNMB") return(panel_mnmb_colors(n))
+  if (name == "FGE") return(panel_fge_colors(n))
   panel_tropomi_colors(n)
 }
 
@@ -335,8 +340,8 @@ panel_draw_map <- function(field_value,lon,lat,breaks,palette_name,label,
     dy <- usr[4]-usr[3]
 
     ### Lower, smaller title than the standard MapNC title.
-    tx <- usr[1]+0.015*dx
-    ty <- usr[4]-0.055*dy
+    tx <- usr[1]+0.020*dx
+    ty <- usr[4]-0.075*dy
     text(tx,ty,label,adj=c(0,1),cex=panel_map_title_cex,
          font=2,family="Century Gothic",col="white")
     text(tx+0.002*dx,ty-0.002*dy,label,adj=c(0,1),cex=panel_map_title_cex,
@@ -350,30 +355,50 @@ panel_draw_map <- function(field_value,lon,lat,breaks,palette_name,label,
     sy <- usr[3]+0.055*dy
     text(usr[1]+0.035*dx,sy,
          paste0("MN\n",panel_format_stat(mn,percent_stats)),
-         adj=c(0,0),cex=panel_stats_cex,family="Century Gothic")
+         adj=c(0,0),cex=panel_stats_cex,font=2,family="Century Gothic")
     text(usr[2]-0.035*dx,sy,
          paste0("SD\n",panel_format_stat(sdv,percent_stats)),
-         adj=c(1,0),cex=panel_stats_cex,family="Century Gothic")
+         adj=c(1,0),cex=panel_stats_cex,font=2,family="Century Gothic")
   }
 }
 
 panel_draw_legend <- function(breaks,palette_name,units="",percent=FALSE) {
   cols <- panel_palette_colors(palette_name,length(breaks)-1)
-  par(mar=c(0.55,0.05,0.75,2.8),family="Century Gothic")
+  par(mar=c(0.45,0.05,0.70,3.0),family="Century Gothic")
   plot.new()
-  plot.window(xlim=c(0,1),ylim=range(breaks),xaxs="i",yaxs="i")
+
+  ymin <- min(breaks,na.rm=TRUE)
+  ymax <- max(breaks,na.rm=TRUE)
+  yrng <- ymax-ymin
+  if (!is.finite(yrng) || yrng <= 0) yrng <- 1
+
+  ### Reserve 5% of the vertical range for the triangular end caps.
+  cap <- 0.055*yrng
+  plot.window(xlim=c(0,1),ylim=c(ymin-cap,ymax+cap),xaxs="i",yaxs="i")
+
+  ### Main colour bar.
   rect(0,breaks[-length(breaks)],1,breaks[-1],col=cols,border=NA)
 
-  at <- seq(min(breaks),max(breaks),length.out=5)
+  ### Match the normal COMPASS/MapNC legend style: pointed ends at both sides.
+  polygon(c(0,1,0.5),c(ymin,ymin,ymin-cap),col=cols[1],border=NA)
+  polygon(c(0,1,0.5),c(ymax,ymax,ymax+cap),col=cols[length(cols)],border=NA)
+
+  at <- seq(ymin,ymax,length.out=5)
   if (percent) {
-    labs <- formatC(at,format="f",digits=0)
+    labs <- paste0(formatC(at,format="f",digits=0),"%")
   } else {
     labs <- format(at,scientific=TRUE,digits=2)
   }
   axis(4,at=at,labels=labs,las=1,cex.axis=panel_legend_cex,tck=-0.05)
-  if (nzchar(units))
-    mtext(units,side=3,line=-0.1,adj=1,cex=panel_legend_cex/1.4,family="Century Gothic")
-  box(lwd=1.5)
+
+  if (nzchar(units) && !percent)
+    mtext(units,side=3,line=-0.05,adj=1,cex=panel_legend_cex/1.25,family="Century Gothic")
+
+  ### Box only around the rectangular body; leave triangular caps visible.
+  segments(0,ymin,0,ymax,lwd=1.5)
+  segments(1,ymin,1,ymax,lwd=1.5)
+  segments(0,ymin,1,ymin,lwd=1.5)
+  segments(0,ymax,1,ymax,lwd=1.5)
 }
 
 panel_validation_plot_settings <- function(variable,kind) {
@@ -383,7 +408,7 @@ panel_validation_plot_settings <- function(variable,kind) {
       palette="TROPOMI_NEW",units=""))
     if (kind == "me") return(list(
       breaks=seq(-0.8,0.8,length.out=201),palette="MNMB",units=""))
-    return(list(breaks=seq(0,1.0,length.out=201),palette="TROPOMI_NEW",units=""))
+    return(list(breaks=seq(0,1.0,length.out=201),palette="FGE",units=""))
   }
 
   if (variable == "AE550to860") {
@@ -391,7 +416,7 @@ panel_validation_plot_settings <- function(variable,kind) {
       breaks=seq(0,2.0,length.out=201),palette="TROPOMI_NEW",units=""))
     if (kind == "me") return(list(
       breaks=seq(-1,1,length.out=201),palette="MNMB",units=""))
-    return(list(breaks=seq(0,1.0,length.out=201),palette="TROPOMI_NEW",units=""))
+    return(list(breaks=seq(0,1.0,length.out=201),palette="FGE",units=""))
   }
 
   stop("No validation plot settings for ",variable)

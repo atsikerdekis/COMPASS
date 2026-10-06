@@ -784,5 +784,13 @@ regions <- list(
   europe    = c(-18,40,30,70),
   desert_aeronet = c(-180,180,-90,90),
   ocean_aeronet  = c(-180,180,-90,90),
-  se_asia   = c(65,180,-23,50)
+  se_asia   = c(65,180,-23,50),
+
+  ## bias-focused rectangles for 4x3 validation maps
+  bias_india              = c(68, 90, 8, 31),
+  bias_china              = c(102, 124, 22, 42),
+  bias_europe             = c(-8, 25, 43, 58),
+  bias_gulf_of_guinea     = c(-18, 12, -2, 12),
+  bias_mexico_plume       = c(-118, -96, 14, 30),
+  bias_north_south_america= c(-82, -58, -5, 13)
 )

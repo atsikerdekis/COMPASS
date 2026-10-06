@@ -79,7 +79,7 @@ panel_map_title_cex <- 3.6
 panel_stats_cex <- 2.8
 panel_legend_cex <- 2.35
 panel_map_width <- 3.9
-panel_legend_width <- 0.8
+panel_legend_width <- 0.55
 panel_map_height <- 2.1
 panel_header_height <- 0.50
 
@@ -364,41 +364,52 @@ panel_draw_map <- function(field_value,lon,lat,breaks,palette_name,label,
 
 panel_draw_legend <- function(breaks,palette_name,units="",percent=FALSE) {
   cols <- panel_palette_colors(palette_name,length(breaks)-1)
-  par(mar=c(0.45,0.05,0.70,3.0),family="Century Gothic")
-  plot.new()
 
-  ymin <- min(breaks,na.rm=TRUE)
-  ymax <- max(breaks,na.rm=TRUE)
-  yrng <- ymax-ymin
-  if (!is.finite(yrng) || yrng <= 0) yrng <- 1
+  ### Use the same palette renderer as MapNC so the 4x3 panels have the
+  ### standard COMPASS narrow legend with triangular end caps.
+  par(bg="#FFFFFFFF",family="Century Gothic")
+  par(mai=c(0.35,0.05,0.35,0.70))
 
-  ### Reserve 5% of the vertical range for the triangular end caps.
-  cap <- 0.055*yrng
-  plot.window(xlim=c(0,1),ylim=c(ymin-cap,ymax+cap),xaxs="i",yaxs="i")
+  try({
+    drawPalette(
+      at=seq_along(breaks),
+      labels=breaks,
+      fullpage=TRUE,
+      col=cols,
+      las=1,
+      mai=c(0,0.05,0.10,0.55),
+      drawTriangles=TRUE,
+      cex=0
+    )
+  },silent=TRUE)
 
-  ### Main colour bar.
-  rect(0,breaks[-length(breaks)],1,breaks[-1],col=cols,border=NA)
+  mylegend_at <- unique(round(seq(1,length(breaks),length.out=5)))
+  mylegend_values <- breaks[mylegend_at]
 
-  ### Match the normal COMPASS/MapNC legend style: pointed ends at both sides.
-  polygon(c(0,1,0.5),c(ymin,ymin,ymin-cap),col=cols[1],border=NA)
-  polygon(c(0,1,0.5),c(ymax,ymax,ymax+cap),col=cols[length(cols)],border=NA)
-
-  at <- seq(ymin,ymax,length.out=5)
-  if (percent) {
-    labs <- paste0(formatC(at,format="f",digits=0),"%")
-  } else {
-    labs <- format(at,scientific=TRUE,digits=2)
+  if (min(breaks,na.rm=TRUE) < 0 && max(breaks,na.rm=TRUE) > 0) {
+    izero <- which.min(abs(mylegend_values))
+    mylegend_values[izero] <- 0
   }
-  axis(4,at=at,labels=labs,las=1,cex.axis=panel_legend_cex,tck=-0.05)
+
+  if (percent) {
+    mylegend_labels <- paste0(formatC(mylegend_values,format="f",digits=0),"%")
+  } else {
+    mylegend_labels <- format(mylegend_values,scientific=TRUE,digits=2)
+  }
+
+  axis(
+    4,
+    at=mylegend_at,
+    labels=mylegend_labels,
+    las=1,
+    cex.axis=panel_legend_cex,
+    tick=TRUE,
+    family="Century Gothic"
+  )
 
   if (nzchar(units) && !percent)
-    mtext(units,side=3,line=-0.05,adj=1,cex=panel_legend_cex/1.25,family="Century Gothic")
-
-  ### Box only around the rectangular body; leave triangular caps visible.
-  segments(0,ymin,0,ymax,lwd=1.5)
-  segments(1,ymin,1,ymax,lwd=1.5)
-  segments(0,ymin,1,ymin,lwd=1.5)
-  segments(0,ymax,1,ymax,lwd=1.5)
+    mtext(units,side=3,line=1.2,adj=1,
+          cex=panel_legend_cex/1.8,family="Century Gothic")
 }
 
 panel_validation_plot_settings <- function(variable,kind) {

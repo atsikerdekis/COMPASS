@@ -23,7 +23,7 @@ grib_table_AER <- "config/bins_aerver8.csv"
 grib_table_HAM <- "config/bins_hamm7ver4.0.csv"
 
 ### REGION
-region <- "global"
+region <- "bias_india"
 
 ### VARIABLES
 variables <- c(

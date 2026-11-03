@@ -791,14 +791,71 @@ panel_model_to_satellite_grid <- function(field,model_lon,model_lat,sat_lon,sat_
   field[ilon,ilat,,drop=FALSE]
 }
 
-read_panel_validation_model <- function(expname,date,variable=panel_validation_variable) {
+panel_standard_sfc_file <- function(expname,date) {
+  paste0(path_data,expname,"/CAMS_",expname,
+         "_forecast00to21by03_0.7x0.7_sfc_",date,".nc")
+}
+
+panel_read_lon_lat <- function(file) {
+  nc <- nc_open(file)
+  on.exit(nc_close(nc))
+  list(lon=ncvar_get(nc,"longitude"),lat=ncvar_get(nc,"latitude"))
+}
+
+read_panel_validation_model <- function(expname,date,exptype,variable=panel_validation_variable) {
   def <- get_panel_validation_definition(variable)
-  if (def$model_variable == "aod550") return(read_direct_optical(expname,date,"207.210"))
-  if (def$model_variable == "ae550to865") return(read_optical_property(expname,date,"ae550to865"))
+
+  if (def$model_variable == "aod550") {
+    ### Prefer the dedicated optical file when it exists.
+    ofile <- optics_file(expname,date)
+    if (file.exists(ofile)) {
+      return(list(
+        field=read_direct_optical(expname,date,"207.210"),
+        ll=panel_read_lon_lat(ofile),
+        source=ofile
+      ))
+    }
+
+    ### Fall back to a standard SFC file if AOD550 happens to be archived there.
+    sfile <- panel_standard_sfc_file(expname,date)
+    if (file.exists(sfile)) {
+      nc <- nc_open(sfile)
+      on.exit(nc_close(nc),add=TRUE)
+      vname <- grib_to_ncname("207.210")
+      if (vname %in% names(nc$var)) {
+        field <- drop(ncvar_get(nc,vname))
+        ll <- list(lon=ncvar_get(nc,"longitude"),lat=ncvar_get(nc,"latitude"))
+        return(list(field=field,ll=ll,source=sfile))
+      }
+    }
+
+    ### Last-resort AOD550 fallback for panel plotting: sum the available
+    ### species optical depths. This keeps regional panel plots functional
+    ### when old runs predate the dedicated sfc_optics download.
+    field <- read_species_od_sum(expname,date,exptype)
+    table <- resolve_species_od_table(exptype,include_soa=TRUE)
+    lname <- table$logical_name[1]
+    rfile <- variable_file(lname,table,expname,date)
+    if (!file.exists(rfile)) stop("No model file available for panel AOD550 validation: ",rfile)
+    return(list(field=field,ll=panel_read_lon_lat(rfile),source=rfile))
+  }
+
+  if (def$model_variable == "ae550to865") {
+    ofile <- optics_file(expname,date)
+    if (!file.exists(ofile))
+      stop("AE550to860 panel validation requires the dedicated optics file: ",ofile,
+           ". Run download mode first so AOD550 and AOD865 are available.")
+    return(list(
+      field=read_optical_property(expname,date,"ae550to865"),
+      ll=panel_read_lon_lat(ofile),
+      source=ofile
+    ))
+  }
+
   stop("Unsupported panel model validation variable: ",def$model_variable)
 }
 
-build_panel_satellite_validation <- function(expname,dates,variable=panel_validation_variable) {
+build_panel_satellite_validation <- function(expname,exptype,dates,variable=panel_validation_variable) {
   obs_days <- list()
   mod_days <- list()
   sat_lon <- sat_lat <- NULL
@@ -820,12 +877,9 @@ build_panel_satellite_validation <- function(expname,dates,variable=panel_valida
     obs <- panel_array_ensemble_mean(lapply(sensor_data,function(x) x[["field"]]))
     if (is.null(obs)) next
 
-    model <- read_panel_validation_model(expname,d,variable)
-    if (is.null(model_ll)) {
-      nc <- nc_open(optics_file(expname,d))
-      model_ll <- list(lon=ncvar_get(nc,"longitude"),lat=ncvar_get(nc,"latitude"))
-      nc_close(nc)
-    }
+    model_info <- read_panel_validation_model(expname,d,exptype,variable)
+    model <- model_info$field
+    if (is.null(model_ll)) model_ll <- model_info$ll
 
     model_sat <- panel_model_to_satellite_grid(model,model_ll$lon,model_ll$lat,sat_lon,sat_lat)
     nt <- min(dim(obs)[3],dim(model_sat)[3])

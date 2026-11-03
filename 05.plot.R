@@ -1,3 +1,33 @@
+############################
+### MULTI-REGION WRAPPER ###
+############################
+if (exists("region") && length(region) > 1 &&
+    !exists(".compass_region_loop_active", inherits=FALSE)) {
+
+  .compass_regions_requested <- region
+
+  if (!exists("regions"))
+    stop("Region definitions are not available. 01.init.R must be sourced first.")
+
+  .compass_invalid_regions <- setdiff(.compass_regions_requested,names(regions))
+  if (length(.compass_invalid_regions) > 0)
+    stop("Unknown region(s): ",paste(.compass_invalid_regions,collapse=", "),
+         ". Available regions: ",paste(names(regions),collapse=", "))
+
+  .compass_region_loop_active <- TRUE
+
+  for (.compass_region_i in .compass_regions_requested) {
+    message("---> Region: ",.compass_region_i)
+    region <- .compass_region_i
+    source(paste0(path_code,"05.plot.R"),local=environment())
+  }
+
+  region <- .compass_regions_requested
+  rm(.compass_region_i,.compass_invalid_regions,
+     .compass_regions_requested,.compass_region_loop_active)
+
+} else {
+
 ############
 ### INIT ###
 ############
@@ -79,7 +109,7 @@ panel_map_title_cex <- 3.6
 panel_stats_cex <- 2.8
 panel_legend_cex <- 2.35
 panel_map_width <- 3.9
-panel_legend_width <- 0.55
+panel_legend_width <- 0.8
 panel_map_height <- 2.1
 panel_header_height <- 0.50
 
@@ -364,52 +394,41 @@ panel_draw_map <- function(field_value,lon,lat,breaks,palette_name,label,
 
 panel_draw_legend <- function(breaks,palette_name,units="",percent=FALSE) {
   cols <- panel_palette_colors(palette_name,length(breaks)-1)
+  par(mar=c(0.45,0.05,0.70,3.0),family="Century Gothic")
+  plot.new()
 
-  ### Use the same palette renderer as MapNC so the 4x3 panels have the
-  ### standard COMPASS narrow legend with triangular end caps.
-  par(bg="#FFFFFFFF",family="Century Gothic")
-  par(mai=c(0.35,0.05,0.35,0.70))
+  ymin <- min(breaks,na.rm=TRUE)
+  ymax <- max(breaks,na.rm=TRUE)
+  yrng <- ymax-ymin
+  if (!is.finite(yrng) || yrng <= 0) yrng <- 1
 
-  try({
-    drawPalette(
-      at=seq_along(breaks),
-      labels=breaks,
-      fullpage=TRUE,
-      col=cols,
-      las=1,
-      mai=c(0,0.05,0.10,0.55),
-      drawTriangles=TRUE,
-      cex=0
-    )
-  },silent=TRUE)
+  ### Reserve 5% of the vertical range for the triangular end caps.
+  cap <- 0.055*yrng
+  plot.window(xlim=c(0,1),ylim=c(ymin-cap,ymax+cap),xaxs="i",yaxs="i")
 
-  mylegend_at <- unique(round(seq(1,length(breaks),length.out=5)))
-  mylegend_values <- breaks[mylegend_at]
+  ### Main colour bar.
+  rect(0,breaks[-length(breaks)],1,breaks[-1],col=cols,border=NA)
 
-  if (min(breaks,na.rm=TRUE) < 0 && max(breaks,na.rm=TRUE) > 0) {
-    izero <- which.min(abs(mylegend_values))
-    mylegend_values[izero] <- 0
-  }
+  ### Match the normal COMPASS/MapNC legend style: pointed ends at both sides.
+  polygon(c(0,1,0.5),c(ymin,ymin,ymin-cap),col=cols[1],border=NA)
+  polygon(c(0,1,0.5),c(ymax,ymax,ymax+cap),col=cols[length(cols)],border=NA)
 
+  at <- seq(ymin,ymax,length.out=5)
   if (percent) {
-    mylegend_labels <- paste0(formatC(mylegend_values,format="f",digits=0),"%")
+    labs <- paste0(formatC(at,format="f",digits=0),"%")
   } else {
-    mylegend_labels <- format(mylegend_values,scientific=TRUE,digits=2)
+    labs <- format(at,scientific=TRUE,digits=2)
   }
-
-  axis(
-    4,
-    at=mylegend_at,
-    labels=mylegend_labels,
-    las=1,
-    cex.axis=panel_legend_cex,
-    tick=TRUE,
-    family="Century Gothic"
-  )
+  axis(4,at=at,labels=labs,las=1,cex.axis=panel_legend_cex,tck=-0.05)
 
   if (nzchar(units) && !percent)
-    mtext(units,side=3,line=1.2,adj=1,
-          cex=panel_legend_cex/1.8,family="Century Gothic")
+    mtext(units,side=3,line=-0.05,adj=1,cex=panel_legend_cex/1.25,family="Century Gothic")
+
+  ### Box only around the rectangular body; leave triangular caps visible.
+  segments(0,ymin,0,ymax,lwd=1.5)
+  segments(1,ymin,1,ymax,lwd=1.5)
+  segments(0,ymin,1,ymin,lwd=1.5)
+  segments(0,ymax,1,ymax,lwd=1.5)
 }
 
 panel_validation_plot_settings <- function(variable,kind) {
@@ -1099,11 +1118,17 @@ if (length(panel_species_plot_variables) > 0) {
     panel_base <- tolower(strip_time_aggregation(logical_name))
     message("---> Plotting ",logical_name,if (regional_mode) paste0(" for ",region) else "")
 
-    ### The optical validation file is guaranteed by 02.start.R for every
-    ### multi-panel figure, so it is a stable source of the model grid.
+    ### Use an actually available panel input as the model-grid reference.
+    ### Do not require the dedicated optics file merely to obtain lon/lat;
+    ### older panel runs may contain all species fields in the standard SFC file.
     ref_file <- optics_file(expname1,seqDate[1])
+    if (!file.exists(ref_file)) {
+      ref_table <- resolve_species_od_table(exptype1,include_soa=TRUE)
+      ref_name <- ref_table$logical_name[1]
+      ref_file <- variable_file(ref_name,ref_table,expname1,seqDate[1])
+    }
     if (!file.exists(ref_file))
-      stop("Optics reference file for multi-panel species plot not found: ",ref_file)
+      stop("No model reference file found for multi-panel species plot: ",ref_file)
     ll <- read_lon_lat(ref_file)
     field_lon <- ll$lon
     field_lat <- ll$lat
@@ -1113,8 +1138,8 @@ if (length(panel_species_plot_variables) > 0) {
 
     ### Validation is experiment-specific because ME/MAE use that experiment,
     ### while the satellite ensemble itself is identical in both figures.
-    validation1 <- build_panel_satellite_validation(expname1,seqDate,panel_validation_variable)
-    validation2 <- build_panel_satellite_validation(expname2,seqDate,panel_validation_variable)
+    validation1 <- build_panel_satellite_validation(expname1,exptype1,seqDate,panel_validation_variable)
+    validation2 <- build_panel_satellite_validation(expname2,exptype2,seqDate,panel_validation_variable)
 
     units <- ""
     if (panel_base == "mass_per_species") units <- "kg m^-2"
@@ -2167,4 +2192,6 @@ if (length(dep_variables) > 0) {
 
     message("---> Composite figure: ",file_out)
   }
+}
+
 }

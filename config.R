@@ -23,7 +23,27 @@ grib_table_AER <- "config/bins_aerver8.csv"
 grib_table_HAM <- "config/bins_hamm7ver4.0.csv"
 
 ### REGION
-region <- "bias_india"
+region <- c(
+  "global",
+  "n_america",
+  "us",
+  "s_america",
+  "africa",
+  "China",
+  "India",
+  "WUS",
+  "EUS",
+  "europe",
+  "desert_aeronet",
+  "ocean_aeronet",
+  "se_asia",
+  "bias_india",
+  "bias_china",
+  "bias_europe",
+  "bias_gulf_of_guinea",
+  "bias_mexico_plume",
+  "bias_north_south_america"
+)
 
 ### VARIABLES
 variables <- c(

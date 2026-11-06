@@ -107,7 +107,7 @@ map_title_cex <- 1.25
 panel_header_cex <- 4.8
 panel_map_title_cex <- 3.6
 panel_stats_cex <- 2.8
-panel_legend_cex <- 2.35
+panel_legend_cex <- 3.30
 panel_map_width <- 3.9
 panel_legend_width <- 0.8
 panel_map_height <- 2.1
@@ -398,42 +398,62 @@ panel_draw_map <- function(field_value,lon,lat,breaks,palette_name,label,
 }
 
 panel_draw_legend <- function(breaks,palette_name,units="",percent=FALSE) {
-  cols <- panel_palette_colors(palette_name,length(breaks)-1)
-  par(mar=c(0.45,0.05,0.70,3.0),family="Century Gothic")
+  ### Discrete equal-height colour bands, even when numeric breakpoints
+  ### are not equally spaced (AOD_white, ME and MAE).
+  ### Match the earlier COMPASS 4x3 legend: medium-width strip,
+  ### readable labels and triangular caps, all inside the legend cell.
+  cols <- panel_palette_colors(palette_name,length(breaks)-1L)
+  nb <- length(cols)
+  if (nb < 1L) stop("Legend requires at least two breakpoints.")
+
+  par(mar=c(0,0,0,0),family="Century Gothic",xpd=FALSE)
   plot.new()
+  cap <- 0.055 * nb
+  plot.window(xlim=c(0,1),ylim=c(-cap*1.1,nb+cap*1.1 + 0.08*nb),
+              xaxs="i",yaxs="i")
 
-  ymin <- min(breaks,na.rm=TRUE)
-  ymax <- max(breaks,na.rm=TRUE)
-  yrng <- ymax-ymin
-  if (!is.finite(yrng) || yrng <= 0) yrng <- 1
+  ### The width is approximately that of the previous preferred figure.
+  ### The remaining portion of the 0.8-inch cell is reserved for labels.
+  bar_left <- 0.06
+  bar_right <- 0.36
+  label_x <- 0.41
 
-  ### Reserve 5% of the vertical range for the triangular end caps.
-  cap <- 0.055*yrng
-  plot.window(xlim=c(0,1),ylim=c(ymin-cap,ymax+cap),xaxs="i",yaxs="i")
+  ### Rectangles are indexed by breakpoint interval, not physical value.
+  ### Therefore a 0.05 interval and a 0.20 interval are equally tall.
+  for (i in seq_len(nb))
+    rect(bar_left,i-1L,bar_right,i,col=cols[i],border=NA)
 
-  ### Main colour bar.
-  rect(0,breaks[-length(breaks)],1,breaks[-1],col=cols,border=NA)
+  polygon(c(bar_left,bar_right,(bar_left+bar_right)/2),
+          c(0,0,-cap),col=cols[1],border="grey55",lwd=0.7)
+  polygon(c(bar_left,bar_right,(bar_left+bar_right)/2),
+          c(nb,nb,nb+cap),col=cols[nb],border="grey55",lwd=0.7)
+  rect(bar_left,0,bar_right,nb,border="grey40",lwd=0.8)
 
-  ### Match the normal COMPASS/MapNC legend style: pointed ends at both sides.
-  polygon(c(0,1,0.5),c(ymin,ymin,ymin-cap),col=cols[1],border=NA)
-  polygon(c(0,1,0.5),c(ymax,ymax,ymax+cap),col=cols[length(cols)],border=NA)
+  ### Five readable tick labels, evenly distributed in colour-band space.
+  ### The underlying fixed AOD/ME/MAE breakpoints remain unchanged.
+  idx <- unique(round(seq(1,length(breaks),length.out=5)))
+  values <- breaks[idx]
+  y_at <- idx-1L
 
-  at <- seq(ymin,ymax,length.out=5)
   if (percent) {
-    labs <- paste0(formatC(at,format="f",digits=0),"%")
+    labels <- paste0(formatC(values,format="f",digits=0),"%")
+  } else if (length(breaks) <= 20L) {
+    labels <- formatC(values,format="f",digits=2)
   } else {
-    labs <- format(at,scientific=TRUE,digits=2)
+    labels <- format(values,scientific=TRUE,digits=2,trim=TRUE)
   }
-  axis(4,at=at,labels=labs,las=1,cex.axis=panel_legend_cex,tck=-0.05)
+  labels[abs(values) < 1e-12] <- if (percent) "0%" else "0.00"
+
+  for (i in seq_along(y_at)) {
+    segments(bar_right,y_at[i],bar_right+0.025,y_at[i],
+             lwd=0.65,col="grey40")
+    text(label_x,y_at[i],labels[i],adj=c(0,0.5),
+         cex=panel_legend_cex,col="grey25",family="Century Gothic")
+  }
 
   if (nzchar(units) && !percent)
-    mtext(units,side=3,line=-0.05,adj=1,cex=panel_legend_cex/1.25,family="Century Gothic")
-
-  ### Box only around the rectangular body; leave triangular caps visible.
-  segments(0,ymin,0,ymax,lwd=1.5)
-  segments(1,ymin,1,ymax,lwd=1.5)
-  segments(0,ymin,1,ymin,lwd=1.5)
-  segments(0,ymax,1,ymax,lwd=1.5)
+    text(0.50,nb+cap*0.94,units,adj=c(0.5,1),
+         cex=panel_legend_cex*0.75,family="Century Gothic")
 }
 
 panel_validation_plot_settings <- function(variable,kind) {
@@ -442,8 +462,10 @@ panel_validation_plot_settings <- function(variable,kind) {
       breaks=c(0.00,0.05,0.10,0.15,0.20,0.25,0.30,0.35,0.40,0.50,0.60,0.80,1.00),
       palette="AOD_white",units=""))
     if (kind == "me") return(list(
-      breaks=seq(-0.8,0.8,length.out=201),palette="MNMB",units=""))
-    return(list(breaks=seq(0,1.0,length.out=201),palette="FGE",units=""))
+      breaks=c(-0.80,-0.60,-0.50,-0.30,-0.20,-0.10,-0.05,0,
+               0.05,0.10,0.20,0.30,0.50,0.60,0.80),palette="MNMB",units=""))
+    return(list(breaks=c(0.05,0.10,0.20,0.30,0.40,0.50,0.60,0.70,0.80,0.90,1.00),
+           palette="FGE",units=""))
   }
 
   if (variable == "AE550to860") {
@@ -476,8 +498,15 @@ plot_species_map_grid <- function(field_list,validation,expname,exptype,panel_na
     field_list <- lapply(field_list,function(x) x*100)
 
   populated <- field_list[names(field_list) != "blank"]
-  species_breaks <- if (ratio_panel) seq(0,100,length.out=201) else
-    panel_safe_positive_breaks(populated,200)
+  ### Fixed AOD scale identical to the satellite ensemble (0 to 1).
+  ### Keep the existing percent scale for ratio panels.
+  if (ratio_panel) {
+    species_breaks <- seq(0,100,length.out=201)
+  } else if (panel_name == "aod_per_species") {
+    species_breaks <- panel_validation_plot_settings("AOD550","obs")$breaks
+  } else {
+    species_breaks <- panel_safe_positive_breaks(populated,200)
+  }
 
   species_units <- if (ratio_panel) "%" else units
 
@@ -533,9 +562,9 @@ plot_species_map_grid <- function(field_list,validation,expname,exptype,panel_na
     panel_draw_legend(settings$breaks,settings$palette,settings$units,FALSE)
   }
 
-  species_palette <- if (ratio_panel) "TROPOMI_NEW" else "AOD_white"
-
   ### Rows 2--4: species fields, one identical scale for all populated panels.
+  species_palette <- if (ratio_panel) "TROPOMI_NEW" else
+    if (panel_name == "aod_per_species") "AOD_white" else "TROPOMI_NEW"
   for (nm in names(field_list)) {
     label <- get_panel_species_label(nm)
     if (nm == "blank") {

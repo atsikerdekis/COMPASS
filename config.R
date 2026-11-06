@@ -1,17 +1,17 @@
 ### EXPERIMENT SETTINGS
 ### Experiment 1 (control/reference)
-expname1  <- "iyfb" #"jbjc" #"iyfb"
+expname1  <- "jdju" #"jbjc" #"iyfb"
 exptype1  <- "AER"  #"HAM"  #"AER"
 expclass1 <- "rd"   #"rd"   #"rd"
 ### Experiment 2
-expname2  <- "jbjc"
+expname2  <- "b32o"
 exptype2  <- "HAM"
-expclass2 <- "rd"
+expclass2 <- "nl"
 ### Period
-sDate   <- "20190101"
-eDate   <- "20190331"
+sDate   <- "20181201"
+eDate   <- "20181203"
 ### Runtype
-runtype <- "download" # plot | download
+runtype <- "plot" # plot | download
 ### Other
 massdiag_compare <- FALSE
 

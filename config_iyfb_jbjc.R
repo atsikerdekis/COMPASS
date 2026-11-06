@@ -1,17 +1,17 @@
 ### EXPERIMENT SETTINGS
 ### Experiment 1 (control/reference)
-expname1  <- "b32j" #"jbjc" #"iyfb"
-exptype1  <- "HAM"  #"HAM"  #"AER"
-expclass1 <- "nl"   #"rd"   #"rd"
+expname1  <- "iyfb" #"jbjc" #"iyfb"
+exptype1  <- "AER"  #"HAM"  #"AER"
+expclass1 <- "rd"   #"rd"   #"rd"
 ### Experiment 2
-expname2  <- "b32i"
+expname2  <- "jbjc"
 exptype2  <- "HAM"
-expclass2 <- "nl"
+expclass2 <- "rd"
 ### Period
 sDate   <- "20190101"
 eDate   <- "20190103"
 ### Runtype
-runtype <- "download" # plot | download
+runtype <- "plot" # plot | download
 ### Other
 massdiag_compare <- FALSE
 
@@ -23,7 +23,27 @@ grib_table_AER <- "config/bins_aerver8.csv"
 grib_table_HAM <- "config/bins_hamm7ver4.0.csv"
 
 ### REGION
-region <- "bias_gulf_of_guinea"
+region <- c(
+  "global"
+#  "n_america",
+#  "us",
+#  "s_america",
+#  "africa",
+#  "China",
+#  "India",
+#  "WUS",
+#  "EUS",
+#  "europe",
+#  "desert_aeronet",
+#  "ocean_aeronet",
+#  "se_asia",
+#  "bias_india",
+#  "bias_china",
+#  "bias_europe",
+#  "bias_gulf_of_guinea",
+#  "bias_mexico_plume",
+#  "bias_north_south_america"
+)
 
 ### VARIABLES
 variables <- c(

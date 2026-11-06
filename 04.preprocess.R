@@ -602,102 +602,150 @@ read_single_species_mass <- function(expname,date,exptype,suffix) {
   read_variable(file,exptype,lname,table)
 }
 
+### Incremental monthly panel aggregation: valid-sample sums/counts.
+### Preserves per-grid-cell monthly means without full-month 3-D arrays.
+compass_new_accumulator <- function() {
+  list(sum=NULL,count=NULL)
+}
+
+compass_add_field <- function(acc,field) {
+  d <- dim(field)
+  if (is.null(d) || length(d) != 3L)
+    stop("Streaming panel expected a lon x lat x time array, got dimensions: ",
+         paste(d,collapse="x"))
+  if (is.null(acc$sum)) {
+    acc$sum <- matrix(0.0,nrow=d[1],ncol=d[2])
+    acc$count <- matrix(0L,nrow=d[1],ncol=d[2])
+  } else if (!identical(dim(acc$sum),d[1:2])) {
+    stop("Grid dimensions changed during incremental panel averaging.")
+  }
+
+  for (it in seq_len(d[3])) {
+    slice <- field[,,it]
+    ok <- is.finite(slice)
+    if (any(ok)) {
+      acc$sum[ok] <- acc$sum[ok] + slice[ok]
+      acc$count[ok] <- acc$count[ok] + 1L
+    }
+  }
+  acc
+}
+
+compass_finish_mean <- function(acc) {
+  if (is.null(acc$sum)) return(NULL)
+  x <- acc$sum / acc$count
+  x[acc$count == 0L] <- NA_real_
+  x
+}
+
+### Read a single day for each requested component and immediately
+### reduce it to running sums. No list of full-month 3D arrays is retained.
+
 build_panel_species_maps <- function(expname,exptype,dates,panel_base) {
   panel_base <- tolower(strip_time_aggregation(panel_base))
   display_order <- panel_display_species(exptype,panel_base)
-  out <- list()
 
   need_aod <- panel_base %in% c("aod_per_species","aodratio_per_species","mec_per_species")
   need_mass <- panel_base %in% c("mass_per_species","massratio_per_species","mec_per_species")
+  species_names <- c("du","ss","pom","bc","so4","ni","am","soa")
 
-  total_aod <- NULL
-  species_aod <- list()
-  species_mass <- list()
+  total_aod_acc <- compass_new_accumulator()
+  aod_acc <- setNames(lapply(species_names,function(x) compass_new_accumulator()),species_names)
+  mass_acc <- setNames(lapply(species_names,function(x) compass_new_accumulator()),species_names)
+  wat_acc <- compass_new_accumulator()
+
+  for (date in dates) {
+    if (need_aod) {
+      total_aod_acc <- compass_add_field(
+        total_aod_acc,read_direct_optical(expname,date,"207.210"))
+
+      ### Only one day of species AOD exists at a time.
+      day_components <- read_species_od_components(expname,date,exptype)
+      for (nm in species_names) {
+        if (!is.null(day_components[[nm]]))
+          aod_acc[[nm]] <- compass_add_field(aod_acc[[nm]],day_components[[nm]])
+      }
+      rm(day_components)
+
+      if (exptype == "HAM" && panel_base %in% c("aod_per_species","aodratio_per_species"))
+        wat_acc <- compass_add_field(wat_acc,read_water_aod(expname,date,"wat"))
+    }
+
+    if (need_mass) {
+      for (nm in species_names)
+        mass_acc[[nm]] <- compass_add_field(
+          mass_acc[[nm]],read_single_species_mass(expname,date,exptype,nm))
+    }
+  }
+
+  total_aod <- if (need_aod) compass_finish_mean(total_aod_acc) else NULL
+  species_aod <- if (need_aod) lapply(aod_acc,compass_finish_mean) else list()
+  species_mass <- if (need_mass) lapply(mass_acc,compass_finish_mean) else list()
   total_mass <- NULL
 
   if (need_aod) {
-    total_aod <- panel_mean_stack(lapply(dates,function(d) read_direct_optical(expname,d,"207.210")))
-
-    comps_per_day <- lapply(dates,function(d) read_species_od_components(expname,d,exptype))
-    for (suffix in c("du","ss","pom","bc","so4","ni","am","soa")) {
-      vals <- lapply(comps_per_day,function(x) x[[suffix]])
-      vals <- vals[!vapply(vals,is.null,logical(1))]
-      if (length(vals) > 0) species_aod[[suffix]] <- panel_mean_stack(vals)
-    }
-
-    ### For AER, displayed POM is primary OM + SOA.
+    ### Keep the existing science definition: for AER only, SOA is
+    ### folded into POM after each component's monthly mean is computed.
     if (exptype == "AER")
       species_aod[["pom"]] <- panel_add_fields(species_aod[["pom"]],species_aod[["soa"]])
     species_aod[["soa"]] <- NULL
 
     if (exptype == "HAM" && panel_base %in% c("aod_per_species","aodratio_per_species"))
-      species_aod[["wat"]] <- panel_mean_stack(lapply(dates,function(d) read_water_aod(expname,d,"wat")))
+      species_aod[["wat"]] <- compass_finish_mean(wat_acc)
   }
 
   if (need_mass) {
-    ### Read SOA even though it is not displayed separately. It remains part
-    ### of the physical total burden; for AER it is folded into displayed POM.
-    for (suffix in c("du","ss","pom","bc","so4","ni","am","soa")) {
-      vals <- lapply(dates,function(d) read_single_species_mass(expname,d,exptype,suffix))
-      species_mass[[suffix]] <- panel_mean_stack(vals)
-    }
-
-    total_mass <- NULL
-    for (suffix in names(species_mass))
-      total_mass <- panel_add_fields(total_mass,species_mass[[suffix]])
-
+    ### Preserve the previous total as the sum of monthly species masses.
+    for (nm in names(species_mass))
+      total_mass <- panel_add_fields(total_mass,species_mass[[nm]])
     if (exptype == "AER")
       species_mass[["pom"]] <- panel_add_fields(species_mass[["pom"]],species_mass[["soa"]])
     species_mass[["soa"]] <- NULL
   }
 
+  out <- list()
   if (panel_base == "aod_per_species") {
     out[["total"]] <- total_aod
     for (nm in setdiff(display_order,c("total","blank"))) out[[nm]] <- species_aod[[nm]]
   }
-
   if (panel_base == "aodratio_per_species") {
-    total_ratio <- total_aod/total_aod
+    total_ratio <- total_aod / total_aod
     total_ratio[!is.finite(total_ratio)] <- NA_real_
     out[["total"]] <- total_ratio
     for (nm in setdiff(display_order,c("total","blank"))) {
-      x <- species_aod[[nm]]/total_aod
+      x <- species_aod[[nm]] / total_aod
       x[!is.finite(x) | x < 0] <- NA_real_
       out[[nm]] <- x
     }
   }
-
   if (panel_base == "mass_per_species") {
     out[["total"]] <- total_mass
     for (nm in setdiff(display_order,c("total","blank"))) out[[nm]] <- species_mass[[nm]]
   }
-
   if (panel_base == "massratio_per_species") {
-    total_ratio <- total_mass/total_mass
+    total_ratio <- total_mass / total_mass
     total_ratio[!is.finite(total_ratio)] <- NA_real_
     out[["total"]] <- total_ratio
     for (nm in setdiff(display_order,c("total","blank"))) {
-      x <- species_mass[[nm]]/total_mass
+      x <- species_mass[[nm]] / total_mass
       x[!is.finite(x) | x < 0] <- NA_real_
       out[[nm]] <- x
     }
   }
-
   if (panel_base == "mec_per_species") {
-    total_mec <- total_aod/(total_mass*1000)
+    total_mec <- total_aod / (total_mass*1000)
     total_mec[!is.finite(total_mec) | total_mec < 0 | total_aod < 0.05] <- NA_real_
     out[["total"]] <- total_mec
-
     for (nm in setdiff(display_order,c("total","blank"))) {
       aod <- species_aod[[nm]]
       mass <- species_mass[[nm]]
-      x <- aod/(mass*1000)
+      x <- aod / (mass*1000)
       x[!is.finite(x) | x < 0 | aod < 0.05] <- NA_real_
       out[[nm]] <- x
     }
   }
 
-  ### Return exactly nine ordered map slots.
+  ### Same nine fields, labels, and ordering as before.
   template <- out[["total"]]
   ordered <- list()
   for (nm in display_order) {
@@ -855,56 +903,58 @@ read_panel_validation_model <- function(expname,date,exptype,variable=panel_vali
   stop("Unsupported panel model validation variable: ",def$model_variable)
 }
 
-build_panel_satellite_validation <- function(expname,exptype,dates,variable=panel_validation_variable) {
-  obs_days <- list()
-  mod_days <- list()
+build_panel_satellite_validation <- function(expname,exptype,dates,
+                                             variable=panel_validation_variable) {
   sat_lon <- sat_lat <- NULL
+  obs_acc <- compass_new_accumulator()
+  me_acc <- compass_new_accumulator()
+  mae_acc <- compass_new_accumulator()
+  n_days <- 0L
 
-  model_ll <- NULL
-  for (d in dates) {
-    sensor_data <- lapply(panel_satellites,function(s) read_panel_satellite_field(s,d,variable))
+  for (date in dates) {
+    sensor_data <- lapply(panel_satellites,function(s)
+      read_panel_satellite_field(s,date,variable))
     sensor_data <- sensor_data[!vapply(sensor_data,is.null,logical(1))]
-    if (length(sensor_data) == 0) {
-      warning("No satellite panel data available for date ",d)
+    if (length(sensor_data) == 0L) {
+      warning("No satellite panel data available for date ",date)
       next
     }
-
     if (is.null(sat_lon)) {
       sat_lon <- sensor_data[[1]]$lon
       sat_lat <- sensor_data[[1]]$lat
     }
 
     obs <- panel_array_ensemble_mean(lapply(sensor_data,function(x) x[["field"]]))
+    rm(sensor_data)
     if (is.null(obs)) next
 
-    model_info <- read_panel_validation_model(expname,d,exptype,variable)
-    model <- model_info$field
-    if (is.null(model_ll)) model_ll <- model_info$ll
+    model_info <- read_panel_validation_model(expname,date,exptype,variable)
+    model_sat <- panel_model_to_satellite_grid(
+      model_info$field,model_info$ll$lon,model_info$ll$lat,sat_lon,sat_lat)
+    rm(model_info)
 
-    model_sat <- panel_model_to_satellite_grid(model,model_ll$lon,model_ll$lat,sat_lon,sat_lat)
     nt <- min(dim(obs)[3],dim(model_sat)[3])
+    if (nt == 0L) next
     obs <- obs[,,seq_len(nt),drop=FALSE]
     model_sat <- model_sat[,,seq_len(nt),drop=FALSE]
     model_sat[!is.finite(obs)] <- NA_real_
 
-    obs_days[[length(obs_days)+1]] <- obs
-    mod_days[[length(mod_days)+1]] <- model_sat
+    ### Distinct valid counts exactly reproduce na.rm=TRUE on each statistic.
+    obs_acc <- compass_add_field(obs_acc,obs)
+    differences <- model_sat - obs
+    me_acc <- compass_add_field(me_acc,differences)
+    mae_acc <- compass_add_field(mae_acc,abs(differences))
+    n_days <- n_days+1L
   }
 
-  if (length(obs_days) == 0)
-    stop("No satellite data available for panel validation over ",paste(range(dates),collapse="-"))
+  if (n_days == 0L)
+    stop("No satellite data available for panel validation over ",
+         paste(range(dates),collapse="-"))
 
-  obs_stack <- panel_stack_fields(obs_days)
-  mod_stack <- panel_stack_fields(mod_days)
-
-  obs_mean <- apply(obs_stack,c(1,2),mean,na.rm=TRUE)
-  me <- apply(mod_stack-obs_stack,c(1,2),mean,na.rm=TRUE)
-  mae <- apply(abs(mod_stack-obs_stack),c(1,2),mean,na.rm=TRUE)
-  obs_mean[is.nan(obs_mean)] <- NA_real_
-  me[is.nan(me)] <- NA_real_
-  mae[is.nan(mae)] <- NA_real_
-
-  list(obs=obs_mean,me=me,mae=mae,lon=sat_lon,lat=sat_lat)
+  list(obs=compass_finish_mean(obs_acc),
+       me=compass_finish_mean(me_acc),
+       mae=compass_finish_mean(mae_acc),
+       lon=sat_lon,lat=sat_lat)
 }
 
 #################################

@@ -1,150 +1,22 @@
-#!/anaconda3/bin/python -u
-
-import os
+#!/usr/bin/env python3
+"""SFC 30-day GRIB downloader; keeps legacy daily COMPASS NetCDF names."""
 import sys
-import subprocess
-import pandas as pd
-from ecmwfapi import ECMWFService
 from datetime import datetime
-from tenacity import retry, stop_after_attempt
-
-CDO = "/usr/local/apps/cdo/2.5.1/bin/cdo"
+from download_batch import retrieve_batches
 
 
-def grib_to_canonical_ncname(grib):
-    number, table = grib.split(".")
-    return f"p{int(table):03d}{int(number):03d}"
+def main(args):
+    if len(args) not in (6, 7, 8):
+        raise SystemExit("Usage: 03.download_sfc.py EXPNAME EXPCLASS DATESTART DATEEND "
+                         "PATH_DATA PARAMS [STEPS] [TAG]")
+    expname,expclass,start,end,path_data,params=args[:6]
+    steps=args[6] if len(args)>=7 else "0/3/6/9/12/15/18/21"
+    tag=args[7] if len(args)>=8 else "sfc"
+    datetime.strptime(start,"%Y%m%d")
+    datetime.strptime(end,"%Y%m%d")
+    retrieve_batches(expname,expclass,start,end,path_data,params,
+                     tag=tag,levtype="sfc",steps=steps)
 
 
-def normalize_variable_names(filename, params):
-
-    requested = params.split("/")
-    expected_names = [grib_to_canonical_ncname(x) for x in requested]
-
-    result = subprocess.run(
-        [CDO, "-s", "showname", filename],
-        capture_output=True, text=True, check=True
-    )
-    current_names = result.stdout.split()
-
-    print("Requested GRIBs :", requested)
-    print("Current variables:", current_names)
-    print("Expected names   :", expected_names)
-
-    if len(current_names) != len(expected_names):
-        raise RuntimeError(
-            f"Cannot safely rename variables. Requested {len(expected_names)} fields "
-            f"but NetCDF contains {len(current_names)} data variables: {current_names}"
-        )
-
-    for current, expected in zip(current_names, expected_names):
-
-        if current == expected:
-            print(f"Variable {current} already correctly named.")
-            continue
-
-        print(f"Renaming {current} -> {expected}")
-        subprocess.run(
-            ["ncrename", "-O", "-v", f"{current},{expected}", filename],
-            check=True
-        )
-
-
-def retrieve_global(expname, expclass, day, path_data, params, steps, tag):
-
-    TEMP_DIR = "/tmp/"
-    OUT_DIR = path_data + expname
-    DATA_NAME = f"CAMS_{expname}_forecast{steps.split('/')[0].zfill(2)}to{steps.split('/')[-1].zfill(2)}by03_0.7x0.7_{tag}"
-
-    daystrip = day.replace("-", "")
-    mytempdir = TEMP_DIR + daystrip
-
-    if not os.path.exists(mytempdir):
-        os.makedirs(mytempdir)
-    if not os.path.exists(OUT_DIR):
-        os.makedirs(OUT_DIR)
-
-    myoutput = OUT_DIR + "/" + DATA_NAME + "_" + daystrip + ".nc"
-
-    if os.path.isfile(myoutput):
-        print(f"File {myoutput} already exists, skipping...")
-        return
-
-    mytempfn = TEMP_DIR + "Temp_" + DATA_NAME + "_" + daystrip + "_day_2D.nc"
-    if os.path.isfile(mytempfn):
-        os.remove(mytempfn)
-
-    @retry(stop=stop_after_attempt(1))
-    def retryfc():
-
-        print("Trying to download:", mytempfn)
-        print("Parameters:", params)
-        print("Steps:", steps)
-        print("Output tag:", tag)
-
-        server = ECMWFService("mars")
-
-        server.execute({
-            "class": expclass,
-            "date": day,
-            "expver": expname,
-            "levtype": "sfc",
-            "param": params,
-            "step": steps,
-            "stream": "oper",
-            "time": "00",
-            "type": "fc",
-            "format": "netcdf",
-            "grid": "0.7/0.7",
-        }, mytempfn)
-
-        print("Apparently succeeded!")
-
-    retryfc()
-
-    normalize_variable_names(mytempfn, params)
-
-    subprocess.run(
-        ["ncpdq", "-O", "-4", "-L", "1", mytempfn, myoutput],
-        check=True
-    )
-
-    if os.path.isfile(mytempfn):
-        os.remove(mytempfn)
-
-    print("File output at:", myoutput)
-
-
-if __name__ == "__main__":
-
-    if "-h" in sys.argv or "--help" in sys.argv:
-        print(
-            "\nUsage: python 03.download_sfc.py "
-            "EXPNAME EXPCLASS DATESTART DATEEND PATH_DATA PARAMS [STEPS] [TAG]\n"
-        )
-        sys.exit()
-
-    if len(sys.argv) not in (7, 8, 9):
-        print("\nIncorrect number of arguments.")
-        print(
-            "Usage: python 03.download_sfc.py "
-            "EXPNAME EXPCLASS DATESTART DATEEND PATH_DATA PARAMS [STEPS] [TAG]\n"
-        )
-        sys.exit(1)
-
-    expname = sys.argv[1]
-    expclass = sys.argv[2]
-    startDate = datetime.strptime(sys.argv[3], "%Y%m%d")
-    endDate = datetime.strptime(sys.argv[4], "%Y%m%d")
-    path_data = sys.argv[5]
-    params = sys.argv[6]
-
-    # Backward-compatible defaults: identical to the original SFC downloader.
-    steps = sys.argv[7] if len(sys.argv) >= 8 else "0/3/6/9/12/15/18/21"
-    tag = sys.argv[8] if len(sys.argv) >= 9 else "sfc"
-
-    sequenceDate = pd.date_range(startDate, endDate, freq="D")
-    dateCodes = sequenceDate.strftime("%Y-%m-%d")
-
-    for dateCode in dateCodes:
-        retrieve_global(expname, expclass, dateCode, path_data, params, steps, tag)
+if __name__=="__main__":
+    main(sys.argv[1:])

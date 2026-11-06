@@ -107,7 +107,7 @@ map_title_cex <- 1.25
 panel_header_cex <- 4.8
 panel_map_title_cex <- 3.6
 panel_stats_cex <- 2.8
-panel_legend_cex <- 3.5
+panel_legend_cex <- 2.35
 panel_map_width <- 3.9
 panel_legend_width <- 0.8
 panel_map_height <- 2.1
@@ -321,6 +321,11 @@ panel_fge_colors <- function(n) {
 panel_palette_colors <- function(name,n) {
   if (name == "MNMB") return(panel_mnmb_colors(n))
   if (name == "FGE") return(panel_fge_colors(n))
+  if (name == "AOD_white")
+    return(colorRampPalette(c(
+      "white","#E1C6DD","#85C0F9","#EBCB3B",
+      "#F5793A","#A95AA1","#382119"
+    ))(n))
   panel_tropomi_colors(n)
 }
 
@@ -394,77 +399,48 @@ panel_draw_map <- function(field_value,lon,lat,breaks,palette_name,label,
 
 panel_draw_legend <- function(breaks,palette_name,units="",percent=FALSE) {
   cols <- panel_palette_colors(palette_name,length(breaks)-1)
+  par(mar=c(0.45,0.05,0.70,3.0),family="Century Gothic")
+  plot.new()
 
-  ### Use the exact MapNC colour-bar geometry:
-  ### narrow colour strip, enough right-side space for scientific labels,
-  ### and proper triangular end caps.
-  par(bg="#FFFFFFFF",family="Century Gothic")
-  par(mai=c(0.5,0.5,0.5,0.5))
+  ymin <- min(breaks,na.rm=TRUE)
+  ymax <- max(breaks,na.rm=TRUE)
+  yrng <- ymax-ymin
+  if (!is.finite(yrng) || yrng <= 0) yrng <- 1
 
-  try({
-    drawPalette(
-      at=seq_along(breaks),
-      labels=breaks,
-      fullpage=TRUE,
-      col=cols,
-      las=1,
-      mai=c(0,0.2,0.5,1.8),
-      drawTriangles=TRUE,
-      cex=0
-    )
-  },silent=TRUE)
+  ### Reserve 5% of the vertical range for the triangular end caps.
+  cap <- 0.055*yrng
+  plot.window(xlim=c(0,1),ylim=c(ymin-cap,ymax+cap),xaxs="i",yaxs="i")
 
-  ### Five readable labels, matching the normal COMPASS MapNC formatting.
-  mylegend_at <- unique(round(seq(1,length(breaks),length.out=5)))
-  mylegend_values <- breaks[mylegend_at]
+  ### Main colour bar.
+  rect(0,breaks[-length(breaks)],1,breaks[-1],col=cols,border=NA)
 
-  if (min(breaks,na.rm=TRUE) < 0 && max(breaks,na.rm=TRUE) > 0) {
-    izero <- which.min(abs(mylegend_values))
-    mylegend_values[izero] <- 0
-  }
+  ### Match the normal COMPASS/MapNC legend style: pointed ends at both sides.
+  polygon(c(0,1,0.5),c(ymin,ymin,ymin-cap),col=cols[1],border=NA)
+  polygon(c(0,1,0.5),c(ymax,ymax,ymax+cap),col=cols[length(cols)],border=NA)
 
+  at <- seq(ymin,ymax,length.out=5)
   if (percent) {
-    mylegend_labels <- paste0(
-      formatC(mylegend_values,format="f",digits=0),"%"
-    )
+    labs <- paste0(formatC(at,format="f",digits=0),"%")
   } else {
-    mylegend_labels <- format(
-      mylegend_values,
-      scientific=TRUE,
-      digits=2
-    )
+    labs <- format(at,scientific=TRUE,digits=2)
   }
+  axis(4,at=at,labels=labs,las=1,cex.axis=panel_legend_cex,tck=-0.05)
 
-  axis(
-    4,
-    at=mylegend_at,
-    labels=mylegend_labels,
-    cex.axis=panel_legend_cex,
-    tick=TRUE,
-    las=1,
-    family="Century Gothic"
-  )
+  if (nzchar(units) && !percent)
+    mtext(units,side=3,line=-0.05,adj=1,cex=panel_legend_cex/1.25,family="Century Gothic")
 
-  if (nzchar(units) && !percent) {
-    mtext(
-      paste0("    ",units),
-      side=3,
-      line=3.5,
-      adj=1,
-      cex=panel_legend_cex/1.8,
-      family="Century Gothic"
-    )
-  }
-
-  ### Same outline used by MapNC.
-  box(lwd=2,col="black")
+  ### Box only around the rectangular body; leave triangular caps visible.
+  segments(0,ymin,0,ymax,lwd=1.5)
+  segments(1,ymin,1,ymax,lwd=1.5)
+  segments(0,ymin,1,ymin,lwd=1.5)
+  segments(0,ymax,1,ymax,lwd=1.5)
 }
 
 panel_validation_plot_settings <- function(variable,kind) {
   if (variable == "AOD550") {
     if (kind == "obs") return(list(
       breaks=c(0.00,0.05,0.10,0.15,0.20,0.25,0.30,0.35,0.40,0.50,0.60,0.80,1.00),
-      palette="TROPOMI_NEW",units=""))
+      palette="AOD_white",units=""))
     if (kind == "me") return(list(
       breaks=seq(-0.8,0.8,length.out=201),palette="MNMB",units=""))
     return(list(breaks=seq(0,1.0,length.out=201),palette="FGE",units=""))
@@ -557,6 +533,8 @@ plot_species_map_grid <- function(field_list,validation,expname,exptype,panel_na
     panel_draw_legend(settings$breaks,settings$palette,settings$units,FALSE)
   }
 
+  species_palette <- if (ratio_panel) "TROPOMI_NEW" else "AOD_white"
+
   ### Rows 2--4: species fields, one identical scale for all populated panels.
   for (nm in names(field_list)) {
     label <- get_panel_species_label(nm)
@@ -568,10 +546,10 @@ plot_species_map_grid <- function(field_list,validation,expname,exptype,panel_na
 
     panel_draw_map(
       field_list[[nm]],field_lon,field_lat,
-      species_breaks,"TROPOMI_NEW",label,ratio_panel
+      species_breaks,species_palette,label,ratio_panel
     )
     panel_draw_legend(
-      species_breaks,"TROPOMI_NEW",species_units,ratio_panel
+      species_breaks,species_palette,species_units,ratio_panel
     )
   }
 
@@ -1177,6 +1155,10 @@ if (length(panel_species_plot_variables) > 0) {
 
     plot_species_map_grid(maps1,validation1,expname1,exptype1,panel_base,units=units)
     plot_species_map_grid(maps2,validation2,expname2,exptype2,panel_base,units=units)
+
+    ### Free panel arrays before the next diagnostic or region.
+    rm(maps1,maps2,validation1,validation2)
+    invisible(gc(verbose=FALSE))
   }
 }
 

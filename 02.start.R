@@ -1,459 +1,227 @@
 ###
 ### Created : Thanos Tsikerdekis (KNMI) | May 2025
-### Contact : thanos.tsikerdekis@knmi.nl
-### Purpose : Start a comparison
+### Purpose : Start a comparison; batch MARS downloads preserving daily NetCDF files
 ###
 
-###################
-### START TIMER ###
-###################
 stime <- Sys.time()
 message("---> Starting...")
 
-##################
-### INITIALIZE ###
-##################
 path_code <- paste0(dirname(normalizePath(sub("--file=", "", commandArgs(FALSE)[grep("--file=", commandArgs(FALSE))]))), "/")
 source(paste0(path_code,"config.R"))
 source(paste0(path_code,"01.init.R"))
 
-######################
-### DOWNLOAD DATES ###
-######################
-seqDate <- format(seq.Date(from=as.Date(sDate,format="%Y%m%d"),to=as.Date(eDate,format="%Y%m%d"),by="day"),"%Y%m%d")
+seqDate <- format(seq.Date(as.Date(sDate,"%Y%m%d"),as.Date(eDate,"%Y%m%d"),by="day"),"%Y%m%d")
+if (length(seqDate) < 1) stop("Invalid download date range: ",sDate,"-",eDate)
 
-step <- round(length(seqDate)/NumberOfDownloadJobs,0)
-if (step < 1) step <- 1
+### Maximum number of consecutive calendar days in one queued MARS job.
+### DownloadBatchDays can be added to config.R; 30 is the default.
+if (!exists("DownloadBatchDays")) DownloadBatchDays <- 30L
+DownloadBatchDays <- as.integer(DownloadBatchDays)
+if (length(DownloadBatchDays) != 1 || is.na(DownloadBatchDays) || DownloadBatchDays < 1 || DownloadBatchDays > 30)
+  stop("DownloadBatchDays must be an integer between 1 and 30")
 
-sDate_temp <- as.Date(sDate,format="%Y%m%d")
-eDate_temp <- as.Date(eDate,format="%Y%m%d")
+batch_ids <- split(seq_along(seqDate),ceiling(seq_along(seqDate)/DownloadBatchDays))
 
-vdate1 <- gsub("-","",seq.Date(sDate_temp,eDate_temp,paste0(step," day")))
-
-sDate_temp <- sDate_temp-1+step
-eDate_temp <- eDate_temp-1+step
-
-vdate2 <- gsub("-","",seq.Date(sDate_temp,eDate_temp,paste0(step," day")))
-
-#############################
-### ARCHIVE OLD DOWNLOADS ###
-#############################
-next_archive_dir <- function(exp_dir) {
-
-  existing_dirs <- list.dirs(exp_dir,full.names=FALSE,recursive=FALSE)
-  archive_dirs <- existing_dirs[grepl("^archive[0-9]{3}$",existing_dirs)]
-
-  if (length(archive_dirs) == 0) {
-    next_id <- 1
-  } else {
-    ids <- suppressWarnings(as.integer(sub("^archive","",archive_dirs)))
-    ids <- ids[is.finite(ids)]
-    next_id <- if (length(ids) == 0) 1 else max(ids)+1
+### Check existing output paths before scheduling; the worker also verifies
+### NetCDF timestep counts and skips completed outputs within partial batches.
+batch_missing <- function(expname,prefix,dates,params) {
+  files <- file.path(path_data,expname,paste0(prefix,"_",dates,".nc"))
+  expected <- vapply(strsplit(params,"/",fixed=TRUE)[[1]],function(code) {
+    bits <- strsplit(code,".",fixed=TRUE)[[1]]
+    paste0("p",sprintf("%03d",as.integer(bits[2])),sprintf("%03d",as.integer(bits[1])))
+  },character(1))
+  for (file in files) {
+    if (!file.exists(file) || is.na(file.info(file)$size) || file.info(file)$size <= 0)
+      return(TRUE)
+    hdr <- tryCatch(system2("ncdump",c("-h",shQuote(file)),stdout=TRUE,stderr=FALSE),
+                    error=function(e) character(0))
+    if (length(hdr) == 0 || !all(vapply(expected,function(x)
+      any(grepl(paste0(x,"\\("),hdr)),logical(1)))) return(TRUE)
+    ntime <- tryCatch(system2("/usr/local/apps/cdo/2.5.1/bin/cdo",
+                                   c("-s","ntime",shQuote(file)),
+                                   stdout=TRUE,stderr=FALSE),
+                      error=function(e) character(0))
+    if (length(ntime) != 1 || !isTRUE(suppressWarnings(as.integer(ntime[1])) == 8L))
+      return(TRUE)
   }
-
-  file.path(exp_dir,paste0("archive",sprintf("%03d",next_id)))
+  FALSE
 }
 
-archive_existing_download_files <- function(
-  expname,dates,
-  archive_sfc=FALSE,
-  archive_precip=FALSE,
-  archive_optics=FALSE,
-  archive_mec=FALSE,
-  archive_columns=FALSE,
-  archive_pl=FALSE,
-  archive_ml=FALSE
-) {
-
-  exp_dir <- file.path(path_data,expname)
-  dir.create(exp_dir,recursive=TRUE,showWarnings=FALSE)
-
-  targets <- character(0)
-
-  for (date in dates) {
-
-    if (archive_sfc)
-      targets <- c(targets,file.path(
-        exp_dir,paste0("CAMS_",expname,"_forecast00to21by03_0.7x0.7_sfc_",date,".nc")
-      ))
-
-    if (archive_precip)
-      targets <- c(targets,file.path(
-        exp_dir,paste0("CAMS_",expname,"_forecast03to24by03_0.7x0.7_sfc_precip_",date,".nc")
-      ))
-
-    if (archive_optics)
-      targets <- c(targets,file.path(
-        exp_dir,paste0("CAMS_",expname,"_forecast00to21by03_0.7x0.7_sfc_optics_",date,".nc")
-      ))
-
-    if (archive_mec)
-      targets <- c(targets,file.path(
-        exp_dir,paste0("CAMS_",expname,"_forecast00to21by03_0.7x0.7_sfc_mec_",date,".nc")
-      ))
-
-    if (archive_columns)
-      targets <- c(targets,file.path(
-        exp_dir,paste0("CAMS_",expname,"_forecast00to21by03_0.7x0.7_sfc_columns_",date,".nc")
-      ))
-
-    if (archive_pl)
-      targets <- c(targets,file.path(
-        exp_dir,paste0("CAMS_",expname,"_forecast00to21by03_0.7x0.7_pl_",date,".nc")
-      ))
-
-    if (archive_ml) {
-      targets <- c(
-        targets,
-        file.path(exp_dir,paste0("CAMS_",expname,"_forecast00to21by03_0.7x0.7_ml_",date,".nc")),
-        file.path(exp_dir,paste0("CAMS_",expname,"_forecast00to21by03_0.7x0.7_ml_rh_",date,".nc")),
-        file.path(exp_dir,paste0("CAMS_",expname,"_forecast00to21by03_0.7x0.7_ml_wat_",date,".nc")),
-        file.path(exp_dir,paste0("CAMS_",expname,"_forecast00to21by03_0.7x0.7_lnsp_",date,".nc"))
-      )
-    }
-  }
-
-  existing <- unique(targets[file.exists(targets)])
-
-  if (length(existing) == 0) {
-    message("---> No existing download files need archiving for ",expname,".")
+submit_batch <- function(job_tag,script,expname,expclass,date1,date2,
+                         params,steps="",out_tag="",levels="") {
+  if (is.null(params) || !nzchar(params)) return(invisible(NULL))
+  base <- paste0("CAMS_",expname,"_forecast",
+                 if (job_tag == "precip") "03to24" else "00to21",
+                 "by03_0.7x0.7_")
+  suffix <- switch(job_tag,
+                   pl="pl",sfc="sfc",precip="sfc_precip",
+                   optics="sfc_optics",mec="sfc_mec",columns="sfc_columns",
+                   ml_rh="ml_rh",ml_wat="ml_wat",job_tag)
+  ### RH additionally creates a dedicated lnsp file. Its existence alone is
+  ### not enough to suppress a needed RH job, and vice versa.
+  dates <- format(seq.Date(as.Date(date1,"%Y%m%d"),as.Date(date2,"%Y%m%d"),by="day"),"%Y%m%d")
+  missing <- batch_missing(expname,paste0(base,suffix),dates,params)
+  if (job_tag == "ml_rh") missing <- missing ||
+    batch_missing(expname,paste0(base,"lnsp"),dates,"152.128")
+  if (!missing) {
+    message("---> All daily files exist for ",expname," / ",job_tag," / ",date1,"-",date2,"; skipping job.")
     return(invisible(NULL))
   }
 
-  archive_dir <- next_archive_dir(exp_dir)
-  dir.create(archive_dir,recursive=TRUE,showWarnings=FALSE)
-
-  message(
-    "---> Existing files detected for ",expname,": ",length(existing),
-    " file(s). Moving them to ",archive_dir," before fresh download."
-  )
-
-  for (src in existing) {
-    dst <- file.path(archive_dir,basename(src))
-    ok <- file.rename(src,dst)
-    if (!ok)
-      stop("Could not archive existing file: ",src," -> ",dst)
-    message("     archived: ",basename(src))
+  name <- paste0("download_",job_tag,"_",expname,"_",date1,"_",date2)
+  flags <- if (job_tag %in% c("ml_rh","ml_wat")) {
+    paste(expname,expclass,date1,date2,path_data,levels,params,out_tag)
+  } else if (job_tag == "pl") {
+    paste(expname,expclass,date1,date2,path_data,params)
+  } else if (job_tag == "sfc") {
+    paste(expname,expclass,date1,date2,path_data,params)
+  } else {
+    paste(expname,expclass,date1,date2,path_data,params,steps,out_tag)
   }
-
-  message("---> Archive complete: ",archive_dir)
-  invisible(archive_dir)
+  message("---> Submitting ",name," (up to ",length(dates)," days, missing outputs only)")
+  SubmitJob(
+    JOB_name=name,
+    JOB_out=paste0(path_log,name,".out"),
+    JOB_err=paste0(path_log,name,".out"),
+    PATH_program=paste0(path_PYTHON,"python"),
+    PATH_script=paste0(path_code,script),
+    SCRIPT_flag=flags
+  )
 }
 
-########################
-### CHECK & DOWNLOAD ###
-########################
 if (runtype == "download") {
+  message("---> Download mode: GRIB batches of up to ",DownloadBatchDays," days.")
+  message("---> Existing valid daily NetCDF files will not be archived or overwritten.")
 
-  message("---> Download mode...")
-
-  if (exists("massdiag_compare") && massdiag_compare) {
-    for (e in 1:2) {
-      if (e == 1) expname <- expname1 else expname <- expname2
-
+  if (exists("massdiag_compare") && isTRUE(massdiag_compare)) {
+    for (expname in unique(c(expname1,expname2))) {
       SubmitJob(
-        JOB_name     = paste0("download_massdiag_",expname),
-        JOB_out      = paste0(path_log,"download_massdiag_",expname,".out"),
-        JOB_err      = paste0(path_log,"download_massdiag_",expname,".out"),
-        PATH_program = paste0(path_R,"Rscript"),
-        PATH_script  = paste0(path_code,"03.download_massdiag.R"),
-        SCRIPT_flag  = paste(expname,sDate,eDate,path_data)
+        JOB_name=paste0("download_massdiag_",expname),
+        JOB_out=paste0(path_log,"download_massdiag_",expname,".out"),
+        JOB_err=paste0(path_log,"download_massdiag_",expname,".out"),
+        PATH_program=paste0(path_R,"Rscript"),
+        PATH_script=paste0(path_code,"03.download_massdiag.R"),
+        SCRIPT_flag=paste(expname,sDate,eDate,path_data)
       )
     }
   }
 
-  for (d in seq_along(vdate1)) {
+  for (e in 1:2) {
+    if (e == 1) {
+      expname <- expname1; exptype <- exptype1
+      expclass <- expclass1; expvars <- variables_exp1
+    } else {
+      expname <- expname2; exptype <- exptype2
+      expclass <- expclass2; expvars <- variables_exp2
+    }
 
-    for (e in 1:2) {
+    ### Pressure-level aerosol diagnostics.
+    params_pl <- unique(expvars$grib[expvars$grib_column == "grib"])
+    params_pl <- params_pl[!is.na(params_pl) & nzchar(params_pl)]
+    params_pl <- paste(params_pl,collapse="/")
 
-      if (e == 1) {
-        expname  <- expname1
-        exptype  <- exptype1
-        expclass <- expclass1
-        expvars  <- variables_exp1
-      } else {
-        expname  <- expname2
-        exptype  <- exptype2
-        expclass <- expclass2
-        expvars  <- variables_exp2
+    ### Surface aerosol diagnostics, including additional species OD/MSS fields.
+    surface_columns <- c("gribddp","gribsdm","gribwdl","gribwdc","gribmss","gribod","gribngt")
+    params_sfc <- unique(expvars$grib[expvars$grib_column %in% surface_columns])
+    params_sfc <- params_sfc[!is.na(params_sfc) & nzchar(params_sfc)]
+    panel_bases <- tolower(strip_time_aggregation(panel_species_variables))
+
+    if (any(strip_time_aggregation(optical_variables) %in% c("od_sum_species","aod550_species")) ||
+        any(panel_bases %in% c("aod_per_species","aodratio_per_species","mec_per_species"))) {
+      species_vars <- paste0("od_",get_od_species_suffixes(include_soa=TRUE))
+      tab <- resolve_variables(exptype,species_vars)
+      extra <- unique(tab$grib[tab$grib_column == "gribod"])
+      params_sfc <- unique(c(params_sfc,extra[!is.na(extra) & nzchar(extra)]))
+    }
+
+    if (any(panel_bases %in% c("mass_per_species","massratio_per_species","mec_per_species"))) {
+      for (nm in paste0("mss_",c("ss","du","pom","bc","so4","ni","am","soa"))) {
+        tab <- tryCatch(resolve_variables(exptype,nm),error=function(err) data.frame())
+        if (nrow(tab)) params_sfc <- c(params_sfc,tab$grib[tab$grib_column == "gribmss"])
       }
+    }
+    params_sfc <- unique(params_sfc)
+    params_sfc <- paste(params_sfc[!is.na(params_sfc) & nzchar(params_sfc)],collapse="/")
 
-      message("---> Downloading ",expname," (",exptype,")...")
+    levels_ml <- ""
+    if (length(rh_variables)) {
+      levels_ml <- paste(sort(unique(sapply(rh_variables,function(x)
+        get_rh_definition(x)$model_level))),collapse="/")
+    }
+    params_ml_wat <- ""
+    levels_ml_wat <- ""
+    if (length(wat_variables) || (exptype == "HAM" &&
+       any(panel_bases %in% c("aod_per_species","aodratio_per_species")))) {
+      levels_ml_wat <- "2/3/4"
+      params_ml_wat <- "22.210"
+    }
 
-      #########################
-      ### SELECT PARAMETERS ###
-      #########################
+    params_precip <- ""
+    if (length(precip_variables))
+      params_precip <- paste(unique(sapply(precip_variables,function(x)
+        get_precip_definition(x)$grib)),collapse="/")
 
-      ### Pressure-level aerosol diagnostics
-      params_pl <- unique(expvars$grib[expvars$grib_column == "grib"])
-      params_pl <- params_pl[!is.na(params_pl) & params_pl != ""]
-      params_pl <- paste(params_pl,collapse="/")
+    params_optics <- ""
+    if (length(optical_variables) || length(panel_species_variables)) {
+      optical_need <- optical_variables
+      if (any(panel_bases %in% c("aod_per_species","aodratio_per_species","mec_per_species")))
+        optical_need <- unique(c(optical_need,"aod550"))
+      if (length(panel_species_variables))
+        optical_need <- unique(c(optical_need,get_panel_validation_definition()$model_variable))
+      params_optics <- paste(get_optical_required_gribs(optical_need),collapse="/")
+    }
 
-      ### Surface aerosol diagnostics
-      surface_columns <- c("gribddp","gribsdm","gribwdl","gribwdc","gribmss","gribod","gribngt")
-      params_sfc <- unique(expvars$grib[expvars$grib_column %in% surface_columns])
-      params_sfc <- params_sfc[!is.na(params_sfc) & params_sfc != ""]
+    params_columns <- ""
+    if (length(column_variables))
+      params_columns <- paste(unique(sapply(column_variables,function(x)
+        get_column_definition(x)$grib)),collapse="/")
 
-      panel_bases <- tolower(strip_time_aggregation(panel_species_variables))
-
-      ### Species-OD support for derived optical products and multi-panel species maps.
-      if (any(strip_time_aggregation(optical_variables) %in% c("od_sum_species","aod550_species")) ||
-          any(panel_bases %in% c("aod_per_species","aodratio_per_species","mec_per_species"))) {
-        species_vars <- paste0("od_",get_od_species_suffixes(include_soa=TRUE))
-        species_table <- resolve_variables(exptype,species_vars)
-        extra_sfc <- unique(species_table$grib[species_table$grib_column == "gribod"])
-        extra_sfc <- extra_sfc[!is.na(extra_sfc) & extra_sfc != ""]
-        params_sfc <- unique(c(params_sfc,extra_sfc))
-      }
-
-      ### Species mass-burden support for multi-panel mass / MEC maps.
-      if (any(panel_bases %in% c("mass_per_species","massratio_per_species","mec_per_species"))) {
-        mass_species <- c("ss","du","pom","bc","so4","ni","am","soa")
-        extra_mss <- character(0)
-        for (nm in paste0("mss_",mass_species)) {
-          tmp <- tryCatch(resolve_variables(exptype,nm), error=function(e) data.frame())
-          if (nrow(tmp) > 0)
-            extra_mss <- c(extra_mss, tmp$grib[tmp$grib_column == "gribmss"])
+    params_mec <- ""
+    if ("mec550" %in% strip_time_aggregation(optical_variables) ||
+        "mec_per_species" %in% panel_bases) {
+      mec_gribs <- unique(expvars$grib[expvars$grib_column == "gribmss"])
+      mec_gribs <- mec_gribs[!is.na(mec_gribs) & nzchar(mec_gribs)]
+      if (!length(mec_gribs)) {
+        for (nm in paste0("mss_",c("ss","du","pom","bc","so4","ni","am","soa"))) {
+          tab <- tryCatch(resolve_variables(exptype,nm),error=function(err) data.frame())
+          if (nrow(tab)) mec_gribs <- c(mec_gribs,tab$grib[tab$grib_column == "gribmss"])
         }
-        extra_mss <- unique(extra_mss)
-        extra_mss <- extra_mss[!is.na(extra_mss) & extra_mss != ""]
-        params_sfc <- unique(c(params_sfc,extra_mss))
       }
-      params_sfc <- paste(params_sfc,collapse="/")
-
-      ### Model levels required for derived RH diagnostics
-      levels_ml <- ""
-      if (length(rh_variables) > 0) {
-        levels_ml <- unique(sapply(rh_variables,function(x) get_rh_definition(x)$model_level))
-        levels_ml <- paste(sort(levels_ml),collapse="/")
-      }
-
-      ### HAM water-AOD modal diagnostics (stored on ML levels 2/3/4)
-      levels_ml_wat <- ""
-      params_ml_wat <- ""
-      need_panel_wat <- any(panel_bases %in% c("aod_per_species","aodratio_per_species")) && exptype == "HAM"
-      if (length(wat_variables) > 0 || need_panel_wat) {
-        levels_ml_wat <- "2/3/4"
-        params_ml_wat <- "22.210"
-      }
-
-      ### Surface precipitation diagnostics
-      params_precip <- ""
-      if (length(precip_variables) > 0) {
-        params_precip <- unique(sapply(precip_variables,function(x) get_precip_definition(x)$grib))
-        params_precip <- paste(params_precip,collapse="/")
-      }
-
-
-### Optical-property diagnostics
-### Multi-panel species figures always include a satellite-validation row, so
-### its model-side optical dependencies are added even for MASS-only panels.
-params_optics <- ""
-if (length(optical_variables) > 0 || length(panel_species_variables) > 0) {
-  optical_need <- optical_variables
-
-  if (any(panel_bases %in% c("aod_per_species","aodratio_per_species","mec_per_species")))
-    optical_need <- unique(c(optical_need,"aod550"))
-
-  if (length(panel_species_variables) > 0)
-    optical_need <- unique(c(optical_need,get_panel_validation_definition()$model_variable))
-
-  params_optics <- paste(get_optical_required_gribs(optical_need),collapse="/")
-}
-
-
-### Surface total-column gas diagnostics
-params_columns <- ""
-if (length(column_variables) > 0) {
-  params_columns <- unique(sapply(column_variables,function(x) get_column_definition(x)$grib))
-  params_columns <- paste(params_columns,collapse="/")
-}
-
-### MEC needs total aerosol column burden. Use all available mss GRIBs.
-params_mec <- ""
-if ("mec550" %in% strip_time_aggregation(optical_variables) || any(panel_bases %in% "mec_per_species")) {
-  params_mec <- unique(expvars$grib[expvars$grib_column == "gribmss"])
-  params_mec <- params_mec[!is.na(params_mec) & params_mec != ""]
-  ### If no MSS variable was explicitly requested, resolve the full aerosol burden.
-  if (length(params_mec) == 0) {
-    mec_names <- paste0("mss_",c("ss","du","pom","bc","so4","ni","am","soa"))
-    mec_table <- data.frame()
-    for (nm in mec_names) {
-      tmp <- tryCatch(resolve_variables(exptype,nm),error=function(e) data.frame())
-      if (nrow(tmp) > 0) mec_table <- rbind(mec_table,tmp)
-    }
-    if (nrow(mec_table) > 0) params_mec <- unique(mec_table$grib[mec_table$grib_column == "gribmss"])
-  }
-  params_mec <- paste(params_mec,collapse="/")
-}
-
-      message("---> PL parameters: ",ifelse(params_pl == "","none",params_pl))
-      message("---> SFC parameters: ",ifelse(params_sfc == "","none",params_sfc))
-      message("---> RH model levels: ",ifelse(levels_ml == "","none",levels_ml))
-      message("---> Water AOD ML levels: ",ifelse(levels_ml_wat == "","none",levels_ml_wat))
-      message("---> Water AOD parameters: ",ifelse(params_ml_wat == "","none",params_ml_wat))
-      message("---> Precipitation parameters: ",ifelse(params_precip == "","none",params_precip))
-      message("---> Optical parameters: ",ifelse(params_optics == "","none",params_optics))
-      message("---> MEC burden parameters: ",ifelse(params_mec == "","none",params_mec))
-      message("---> Total-column parameters: ",ifelse(params_columns == "","none",params_columns))
-
-      ### Archive existing target files once per experiment for this run.
-      ### Doing this before any child jobs are submitted avoids race conditions
-      ### between parallel download jobs choosing archiveNNN directories.
-      if (d == 1) {
-        archive_existing_download_files(
-          expname=expname,
-          dates=seqDate,
-          archive_sfc=params_sfc != "",
-          archive_precip=params_precip != "",
-          archive_optics=params_optics != "",
-          archive_mec=params_mec != "",
-          archive_columns=params_columns != "",
-          archive_pl=params_pl != "",
-          archive_ml=(levels_ml != "" || params_ml_wat != "")
-        )
-      }
-
-      ########################
-      ### SURFACE DOWNLOAD ###
-      ########################
-      if (params_sfc != "") {
-
-        SubmitJob(
-          JOB_name     = paste0("download_sfc_",expname,"_",vdate1[d],"_",vdate2[d]),
-          JOB_out      = paste0(path_log,"download_sfc_",expname,"_",vdate1[d],"_",vdate2[d],".out"),
-          JOB_err      = paste0(path_log,"download_sfc_",expname,"_",vdate1[d],"_",vdate2[d],".out"),
-          PATH_program = paste0(path_PYTHON,"python"),
-          PATH_script  = paste0(path_code,"03.download_sfc.py"),
-          SCRIPT_flag  = paste(expname,expclass,vdate1[d],vdate2[d],path_data,params_sfc)
-        )
-
-      }
-
-      ################################
-      ### PRECIPITATION DOWNLOAD ###
-      ################################
-      if (params_precip != "") {
-
-        SubmitJob(
-          JOB_name     = paste0("download_precip_",expname,"_",vdate1[d],"_",vdate2[d]),
-          JOB_out      = paste0(path_log,"download_precip_",expname,"_",vdate1[d],"_",vdate2[d],".out"),
-          JOB_err      = paste0(path_log,"download_precip_",expname,"_",vdate1[d],"_",vdate2[d],".out"),
-          PATH_program = paste0(path_PYTHON,"python"),
-          PATH_script  = paste0(path_code,"03.download_sfc.py"),
-          SCRIPT_flag  = paste(expname,expclass,vdate1[d],vdate2[d],path_data,params_precip,"3/6/9/12/15/18/21/24","sfc_precip")
-        )
-
-      }
-
-
-############################
-### OPTICAL DOWNLOAD ###
-############################
-if (params_optics != "") {
-  SubmitJob(
-    JOB_name     = paste0("download_optics_",expname,"_",vdate1[d],"_",vdate2[d]),
-    JOB_out      = paste0(path_log,"download_optics_",expname,"_",vdate1[d],"_",vdate2[d],".out"),
-    JOB_err      = paste0(path_log,"download_optics_",expname,"_",vdate1[d],"_",vdate2[d],".out"),
-    PATH_program = paste0(path_PYTHON,"python"),
-    PATH_script  = paste0(path_code,"03.download_sfc.py"),
-    SCRIPT_flag  = paste(expname,expclass,vdate1[d],vdate2[d],path_data,params_optics,"0/3/6/9/12/15/18/21","sfc_optics")
-  )
-}
-
-############################
-### MEC BURDEN DOWNLOAD ###
-############################
-if (params_mec != "") {
-  SubmitJob(
-    JOB_name     = paste0("download_mec_",expname,"_",vdate1[d],"_",vdate2[d]),
-    JOB_out      = paste0(path_log,"download_mec_",expname,"_",vdate1[d],"_",vdate2[d],".out"),
-    JOB_err      = paste0(path_log,"download_mec_",expname,"_",vdate1[d],"_",vdate2[d],".out"),
-    PATH_program = paste0(path_PYTHON,"python"),
-    PATH_script  = paste0(path_code,"03.download_sfc.py"),
-    SCRIPT_flag  = paste(expname,expclass,vdate1[d],vdate2[d],path_data,params_mec,"0/3/6/9/12/15/18/21","sfc_mec")
-  )
-}
-
-
-################################
-### TOTAL-COLUMN GAS DOWNLOAD ###
-################################
-if (params_columns != "") {
-  SubmitJob(
-    JOB_name     = paste0("download_columns_",expname,"_",vdate1[d],"_",vdate2[d]),
-    JOB_out      = paste0(path_log,"download_columns_",expname,"_",vdate1[d],"_",vdate2[d],".out"),
-    JOB_err      = paste0(path_log,"download_columns_",expname,"_",vdate1[d],"_",vdate2[d],".out"),
-    PATH_program = paste0(path_PYTHON,"python"),
-    PATH_script  = paste0(path_code,"03.download_sfc.py"),
-    SCRIPT_flag  = paste(expname,expclass,vdate1[d],vdate2[d],path_data,params_columns,"0/3/6/9/12/15/18/21","sfc_columns")
-  )
-}
-
-      ###############################
-      ### PRESSURE LEVEL DOWNLOAD ###
-      ###############################
-      if (params_pl != "") {
-
-        SubmitJob(
-          JOB_name     = paste0("download_pl_",expname,"_",vdate1[d],"_",vdate2[d]),
-          JOB_out      = paste0(path_log,"download_pl_",expname,"_",vdate1[d],"_",vdate2[d],".out"),
-          JOB_err      = paste0(path_log,"download_pl_",expname,"_",vdate1[d],"_",vdate2[d],".out"),
-          PATH_program = paste0(path_PYTHON,"python"),
-          PATH_script  = paste0(path_code,"03.download_pl.py"),
-          SCRIPT_flag  = paste(expname,expclass,vdate1[d],vdate2[d],path_data,params_pl)
-        )
-
-      }
-
-      ############################
-      ### RH MODEL-LEVEL DOWNLOAD ###
-      ############################
-      if (levels_ml != "") {
-
-        SubmitJob(
-          JOB_name     = paste0("download_ml_rh_",expname,"_",vdate1[d],"_",vdate2[d]),
-          JOB_out      = paste0(path_log,"download_ml_rh_",expname,"_",vdate1[d],"_",vdate2[d],".out"),
-          JOB_err      = paste0(path_log,"download_ml_rh_",expname,"_",vdate1[d],"_",vdate2[d],".out"),
-          PATH_program = paste0(path_PYTHON,"python"),
-          PATH_script  = paste0(path_code,"03.download_ml.py"),
-          SCRIPT_flag  = paste(expname,expclass,vdate1[d],vdate2[d],path_data,levels_ml,"130.128/133.128","rh")
-        )
-
-      }
-
-      ############################
-      ### WATER-AOD ML DOWNLOAD ###
-      ############################
-      if (params_ml_wat != "") {
-
-        SubmitJob(
-          JOB_name     = paste0("download_ml_wat_",expname,"_",vdate1[d],"_",vdate2[d]),
-          JOB_out      = paste0(path_log,"download_ml_wat_",expname,"_",vdate1[d],"_",vdate2[d],".out"),
-          JOB_err      = paste0(path_log,"download_ml_wat_",expname,"_",vdate1[d],"_",vdate2[d],".out"),
-          PATH_program = paste0(path_PYTHON,"python"),
-          PATH_script  = paste0(path_code,"03.download_ml.py"),
-          SCRIPT_flag  = paste(expname,expclass,vdate1[d],vdate2[d],path_data,levels_ml_wat,params_ml_wat,"wat")
-        )
-
-      }
-
+      params_mec <- paste(unique(mec_gribs[!is.na(mec_gribs) & nzchar(mec_gribs)]),collapse="/")
     }
 
-  }
+    message("---> ",expname," (",exptype,") PL: ",ifelse(nzchar(params_pl),params_pl,"none"))
+    message("---> ",expname," SFC: ",ifelse(nzchar(params_sfc),params_sfc,"none"))
+    message("---> ",expname," OPTICS: ",ifelse(nzchar(params_optics),params_optics,"none"))
 
+    for (ids in batch_ids) {
+      date1 <- seqDate[min(ids)]
+      date2 <- seqDate[max(ids)]
+
+      submit_batch("sfc","03.download_sfc.py",expname,expclass,date1,date2,params_sfc)
+      submit_batch("precip","03.download_sfc.py",expname,expclass,date1,date2,
+                   params_precip,"3/6/9/12/15/18/21/24","sfc_precip")
+      submit_batch("optics","03.download_sfc.py",expname,expclass,date1,date2,
+                   params_optics,"0/3/6/9/12/15/18/21","sfc_optics")
+      submit_batch("mec","03.download_sfc.py",expname,expclass,date1,date2,
+                   params_mec,"0/3/6/9/12/15/18/21","sfc_mec")
+      submit_batch("columns","03.download_sfc.py",expname,expclass,date1,date2,
+                   params_columns,"0/3/6/9/12/15/18/21","sfc_columns")
+      submit_batch("pl","03.download_pl.py",expname,expclass,date1,date2,params_pl)
+      if (nzchar(levels_ml)) submit_batch("ml_rh","03.download_ml.py",expname,expclass,date1,date2,
+                   "130.128/133.128",out_tag="rh",levels=levels_ml)
+      ### Only request RH model levels when configured.
+      ### Avoid a zero-level RH request when no RH variable is selected.
+      submit_batch("ml_wat","03.download_ml.py",expname,expclass,date1,date2,
+                   params_ml_wat,out_tag="wat",levels=levels_ml_wat)
+    }
+  }
 }
 
-############
-### PLOT ###
-############
 if (runtype == "plot") {
   message("---> Plot mode...")
   source(paste0(path_code,"05.plot.R"))
 }
 
-#################
-### END TIMER ###
-#################
 etime <- Sys.time()
 message("---> Completed in ",round(difftime(etime,stime,units="mins"),1)," minutes.")

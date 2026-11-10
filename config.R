@@ -1,12 +1,12 @@
 ### EXPERIMENT SETTINGS
 ### Experiment 1 (control/reference)
-expname1  <- "iyfb" #"jbjc" #"iyfb"
+expname1  <- "jdju" #"jbjc" #"iyfb"
 exptype1  <- "AER"  #"HAM"  #"AER"
 expclass1 <- "rd"   #"rd"   #"rd"
 ### Experiment 2
-expname2  <- "jbjc"
+expname2  <- "b32o"
 exptype2  <- "HAM"
-expclass2 <- "rd"
+expclass2 <- "nl"
 ### Period
 sDate   <- "20190101"
 eDate   <- "20190131"
@@ -47,8 +47,8 @@ region <- c(
 
 ### VARIABLES
 variables <- c(
-  "AOD_per_species",
-  "AODratio_per_species"
+  "AOD_per_species_residual_wat",
+  "AODratio_per_species_residual_wat"
 #  "MASS_per_species",
 #  "MASSratio_per_species",
 #  "MEC_per_species"

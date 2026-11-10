@@ -479,7 +479,8 @@ panel_validation_plot_settings <- function(variable,kind) {
   stop("No validation plot settings for ",variable)
 }
 
-plot_species_map_grid <- function(field_list,validation,expname,exptype,panel_name,units=" ") {
+plot_species_map_grid <- function(field_list,validation,expname,exptype,panel_name,
+                                  model_lon,model_lat,units=" ") {
   title_text <- get_panel_species_definition(panel_name)$title
   plot_dir <- make_plot_dir("optics")
   file_out <- paste0(
@@ -489,6 +490,21 @@ plot_species_map_grid <- function(field_list,validation,expname,exptype,panel_na
   if (length(field_list) != 9)
     stop("Species panel plot requires exactly 9 fields; found ",length(field_list),
          " for ",panel_name," / ",expname)
+
+  ### Each model uses its own grid. The satellite validation retains
+  ### validation$lon/validation$lat and may use a different resolution.
+  if (any(!is.finite(model_lon)) || any(!is.finite(model_lat)))
+    stop("Non-finite model coordinates for ",expname)
+  for (species in names(field_list)) {
+    if (species == "blank") next
+    d <- dim(field_list[[species]])
+    if (length(d) != 2L || !identical(as.integer(d),
+            as.integer(c(length(model_lon),length(model_lat)))))
+      stop("Grid mismatch for ",expname," / ",species,
+           ": field dimensions ",paste(d,collapse="x"),
+           "; longitude/latitude lengths ",
+           length(model_lon),"x",length(model_lat))
+  }
 
   ratio_panel <- panel_name %in% c("aodratio_per_species",
                                    "aodratio_per_species_residual_wat",
@@ -576,7 +592,7 @@ plot_species_map_grid <- function(field_list,validation,expname,exptype,panel_na
     }
 
     panel_draw_map(
-      field_list[[nm]],field_lon,field_lat,
+      field_list[[nm]],model_lon,model_lat,
       species_breaks,species_palette,label,ratio_panel
     )
     panel_draw_legend(
@@ -1156,20 +1172,24 @@ if (length(panel_species_plot_variables) > 0) {
     panel_base <- tolower(strip_time_aggregation(logical_name))
     message("---> Plotting ",logical_name,if (regional_mode) paste0(" for ",region) else "")
 
-    ### Use an actually available panel input as the model-grid reference.
-    ### Do not require the dedicated optics file merely to obtain lon/lat;
-    ### older panel runs may contain all species fields in the standard SFC file.
-    ref_file <- optics_file(expname1,seqDate[1])
-    if (!file.exists(ref_file)) {
-      ref_table <- resolve_species_od_table(exptype1,include_soa=TRUE)
-      ref_name <- ref_table$logical_name[1]
-      ref_file <- variable_file(ref_name,ref_table,expname1,seqDate[1])
+    ### Read coordinates separately for each experiment. Model grids can
+    ### differ from one another and from the satellite validation grid.
+    panel_model_grid <- function(expname,exptype,date) {
+      ref_file <- optics_file(expname,date)
+      if (!file.exists(ref_file)) {
+        ref_table <- resolve_species_od_table(exptype,include_soa=TRUE)
+        ref_name <- ref_table$logical_name[1]
+        ref_file <- variable_file(ref_name,ref_table,expname,date)
+      }
+      if (!file.exists(ref_file))
+        stop("No model reference file found for ",expname,": ",ref_file)
+      ll <- read_lon_lat(ref_file)
+      message("---> Panel model grid ",expname,": ",length(ll$lon),
+              " longitudes x ",length(ll$lat)," latitudes (",basename(ref_file),")")
+      ll
     }
-    if (!file.exists(ref_file))
-      stop("No model reference file found for multi-panel species plot: ",ref_file)
-    ll <- read_lon_lat(ref_file)
-    field_lon <- ll$lon
-    field_lat <- ll$lat
+    grid1 <- panel_model_grid(expname1,exptype1,seqDate[1])
+    grid2 <- panel_model_grid(expname2,exptype2,seqDate[1])
 
     maps1 <- build_panel_species_maps(expname1,exptype1,seqDate,panel_base)
     maps2 <- build_panel_species_maps(expname2,exptype2,seqDate,panel_base)
@@ -1186,11 +1206,13 @@ if (length(panel_species_plot_variables) > 0) {
                           "aodratio_per_species_residual_wat",
                           "massratio_per_species")) units <- "%"
 
-    plot_species_map_grid(maps1,validation1,expname1,exptype1,panel_base,units=units)
-    plot_species_map_grid(maps2,validation2,expname2,exptype2,panel_base,units=units)
+    plot_species_map_grid(maps1,validation1,expname1,exptype1,panel_base,
+                          model_lon=grid1$lon,model_lat=grid1$lat,units=units)
+    plot_species_map_grid(maps2,validation2,expname2,exptype2,panel_base,
+                          model_lon=grid2$lon,model_lat=grid2$lat,units=units)
 
     ### Free panel arrays before the next diagnostic or region.
-    rm(maps1,maps2,validation1,validation2)
+    rm(maps1,maps2,validation1,validation2,grid1,grid2)
     invisible(gc(verbose=FALSE))
   }
 }

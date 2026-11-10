@@ -8,10 +8,10 @@ expname2  <- "b32o"
 exptype2  <- "HAM"
 expclass2 <- "nl"
 ### Period
-sDate   <- "20181201"
-eDate   <- "20181203"
+sDate   <- "20190101"
+eDate   <- "20190131"
 ### Runtype
-runtype <- "download" # plot | download
+runtype <- "plot" # plot | download
 ### Other
 massdiag_compare <- FALSE
 
@@ -47,8 +47,8 @@ region <- c(
 
 ### VARIABLES
 variables <- c(
-  "AOD_per_species",
-  "AODratio_per_species"
+  "AOD_per_species_residual_wat",
+  "AODratio_per_species_residual_wat"
 #  "MASS_per_species",
 #  "MASSratio_per_species",
 #  "MEC_per_species"

@@ -1,15 +1,15 @@
 ### EXPERIMENT SETTINGS
 ### Experiment 1 (control/reference)
-expname1  <- "jdju" #"jbjc" #"iyfb"
+expname1  <- "iyfb" #"jbjc" #"iyfb"
 exptype1  <- "AER"  #"HAM"  #"AER"
 expclass1 <- "rd"   #"rd"   #"rd"
 ### Experiment 2
-expname2  <- "b32o"
+expname2  <- "jbjc"
 exptype2  <- "HAM"
-expclass2 <- "nl"
+expclass2 <- "rd"
 ### Period
-sDate   <- "20181201"
-eDate   <- "20181203"
+sDate   <- "20190101"
+eDate   <- "20190131"
 ### Runtype
 runtype <- "plot" # plot | download
 ### Other

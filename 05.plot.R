@@ -490,7 +490,9 @@ plot_species_map_grid <- function(field_list,validation,expname,exptype,panel_na
     stop("Species panel plot requires exactly 9 fields; found ",length(field_list),
          " for ",panel_name," / ",expname)
 
-  ratio_panel <- panel_name %in% c("aodratio_per_species","massratio_per_species")
+  ratio_panel <- panel_name %in% c("aodratio_per_species",
+                                   "aodratio_per_species_residual_wat",
+                                   "massratio_per_species")
 
   ### Convert all ratio panels, including TOTAL, to percent before computing
   ### statistics and plotting. This gives one 0--100% scale everywhere.
@@ -502,7 +504,7 @@ plot_species_map_grid <- function(field_list,validation,expname,exptype,panel_na
   ### Keep the existing percent scale for ratio panels.
   if (ratio_panel) {
     species_breaks <- seq(0,100,length.out=201)
-  } else if (panel_name == "aod_per_species") {
+  } else if (panel_name %in% c("aod_per_species","aod_per_species_residual_wat")) {
     species_breaks <- panel_validation_plot_settings("AOD550","obs")$breaks
   } else {
     species_breaks <- panel_safe_positive_breaks(populated,200)
@@ -564,7 +566,7 @@ plot_species_map_grid <- function(field_list,validation,expname,exptype,panel_na
 
   ### Rows 2--4: species fields, one identical scale for all populated panels.
   species_palette <- if (ratio_panel) "TROPOMI_NEW" else
-    if (panel_name == "aod_per_species") "AOD_white" else "TROPOMI_NEW"
+    if (panel_name %in% c("aod_per_species","aod_per_species_residual_wat")) "AOD_white" else "TROPOMI_NEW"
   for (nm in names(field_list)) {
     label <- get_panel_species_label(nm)
     if (nm == "blank") {
@@ -1180,7 +1182,9 @@ if (length(panel_species_plot_variables) > 0) {
     units <- ""
     if (panel_base == "mass_per_species") units <- "kg m^-2"
     if (panel_base == "mec_per_species") units <- "m2 g^-1"
-    if (panel_base %in% c("aodratio_per_species","massratio_per_species")) units <- "%"
+    if (panel_base %in% c("aodratio_per_species",
+                          "aodratio_per_species_residual_wat",
+                          "massratio_per_species")) units <- "%"
 
     plot_species_map_grid(maps1,validation1,expname1,exptype1,panel_base,units=units)
     plot_species_map_grid(maps2,validation2,expname2,exptype2,panel_base,units=units)

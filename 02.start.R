@@ -127,7 +127,9 @@ if (runtype == "download") {
     panel_bases <- tolower(strip_time_aggregation(panel_species_variables))
 
     if (any(strip_time_aggregation(optical_variables) %in% c("od_sum_species","aod550_species")) ||
-        any(panel_bases %in% c("aod_per_species","aodratio_per_species","mec_per_species"))) {
+        any(panel_bases %in% c("aod_per_species","aodratio_per_species",
+                                  "aod_per_species_residual_wat",
+                                  "aodratio_per_species_residual_wat","mec_per_species"))) {
       species_vars <- paste0("od_",get_od_species_suffixes(include_soa=TRUE))
       tab <- resolve_variables(exptype,species_vars)
       extra <- unique(tab$grib[tab$grib_column == "gribod"])
@@ -164,7 +166,9 @@ if (runtype == "download") {
     params_optics <- ""
     if (length(optical_variables) || length(panel_species_variables)) {
       optical_need <- optical_variables
-      if (any(panel_bases %in% c("aod_per_species","aodratio_per_species","mec_per_species")))
+      if (any(panel_bases %in% c("aod_per_species","aodratio_per_species",
+                                  "aod_per_species_residual_wat",
+                                  "aodratio_per_species_residual_wat","mec_per_species")))
         optical_need <- unique(c(optical_need,"aod550"))
       if (length(panel_species_variables))
         optical_need <- unique(c(optical_need,get_panel_validation_definition()$model_variable))

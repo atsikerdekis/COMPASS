@@ -9,9 +9,9 @@ exptype2  <- "HAM"
 expclass2 <- "rd"
 ### Period
 sDate   <- "20190101"
-eDate   <- "20190103"
+eDate   <- "20190131"
 ### Runtype
-runtype <- "plot" # plot | download
+runtype <- "download" # plot | download
 ### Other
 massdiag_compare <- FALSE
 

@@ -557,6 +557,12 @@ read_total_column <- function(expname,date,logical_name) {
 panel_display_species <- function(exptype,panel_base) {
   panel_base <- tolower(strip_time_aggregation(panel_base))
 
+  ### The residual-water diagnostic occupies the ninth slot for BOTH AER
+  ### and HAM. Legacy direct-WAT mode remains HAM-only.
+  if (panel_base %in% c("aod_per_species_residual_wat",
+                        "aodratio_per_species_residual_wat"))
+    return(c("total","du","ss","pom","bc","so4","ni","am","wat"))
+
   ### Requested display order. SOA is never shown separately.
   if (panel_base %in% c("aod_per_species","aodratio_per_species") && exptype == "HAM")
     return(c("total","du","ss","pom","bc","so4","ni","am","wat"))
@@ -645,7 +651,12 @@ build_panel_species_maps <- function(expname,exptype,dates,panel_base) {
   panel_base <- tolower(strip_time_aggregation(panel_base))
   display_order <- panel_display_species(exptype,panel_base)
 
-  need_aod <- panel_base %in% c("aod_per_species","aodratio_per_species","mec_per_species")
+  residual_wat <- panel_base %in% c("aod_per_species_residual_wat",
+                                   "aodratio_per_species_residual_wat")
+  need_aod <- panel_base %in% c("aod_per_species","aodratio_per_species",
+                                "aod_per_species_residual_wat",
+                                "aodratio_per_species_residual_wat",
+                                "mec_per_species")
   need_mass <- panel_base %in% c("mass_per_species","massratio_per_species","mec_per_species")
   species_names <- c("du","ss","pom","bc","so4","ni","am","soa")
 
@@ -684,6 +695,34 @@ build_panel_species_maps <- function(expname,exptype,dates,panel_base) {
   total_mass <- NULL
 
   if (need_aod) {
+    if (residual_wat) {
+      ### Residual diagnosed from the difference of monthly means. Include
+      ### EVERY optical component (also SOA) before folding SOA into AER POM,
+      ### otherwise the same AOD would be counted twice.
+      ### Do not silently clip negative residuals: these indicate that the
+      ### 'water' closure is not a physically pure water quantity.
+      components <- Filter(Negate(is.null),species_aod)
+      if (length(components) == 0L)
+        stop("Cannot calculate residual water AOD without species OD for ",expname)
+      available_components <- names(components)
+      if (length(available_components) != length(species_names)) {
+        warning("Residual water AOD for ",expname," computed with components: ",
+                paste(available_components,collapse=", "),
+                ". Check missing species diagnostics before interpreting closure.")
+      }
+      species_sum <- Reduce(`+`,components)
+      residual_field <- total_aod - species_sum
+      residual_field[!is.finite(total_aod) | !is.finite(species_sum)] <- NA_real_
+      n_negative <- sum(is.finite(residual_field) & residual_field < -1e-8)
+      if (n_negative > 0L)
+        warning("Residual water AOD for ",expname," is negative at ",n_negative,
+                " grid cells; keeping signed residual without clipping.")
+      message("---> ",expname," residual water AOD = monthly total AOD550 minus monthly ",
+              "sum of all dry species AOD (including SOA).")
+      species_aod[["wat"]] <- residual_field
+      rm(species_sum,residual_field,components)
+    }
+
     ### Keep the existing science definition: for AER only, SOA is
     ### folded into POM after each component's monthly mean is computed.
     if (exptype == "AER")
@@ -704,11 +743,11 @@ build_panel_species_maps <- function(expname,exptype,dates,panel_base) {
   }
 
   out <- list()
-  if (panel_base == "aod_per_species") {
+  if (panel_base %in% c("aod_per_species","aod_per_species_residual_wat")) {
     out[["total"]] <- total_aod
     for (nm in setdiff(display_order,c("total","blank"))) out[[nm]] <- species_aod[[nm]]
   }
-  if (panel_base == "aodratio_per_species") {
+  if (panel_base %in% c("aodratio_per_species","aodratio_per_species_residual_wat")) {
     total_ratio <- total_aod / total_aod
     total_ratio[!is.finite(total_ratio)] <- NA_real_
     out[["total"]] <- total_ratio

@@ -167,10 +167,13 @@ get_optical_definition <- function(logical_name) {
 #############################################
 panel_species_definitions <- data.frame(
   logical_name = c("aod_per_species","aodratio_per_species",
+                   "aod_per_species_residual_wat","aodratio_per_species_residual_wat",
                    "mass_per_species","massratio_per_species",
                    "mec_per_species"),
   title = c("AOD per species",
             "Species AOD / total AOD550",
+            "AOD per species (residual water)",
+            "Species AOD / total AOD550 (residual water)",
             "Mass burden per species",
             "Species mass / total mass burden",
             "Mass extinction coefficient per species"),
@@ -750,9 +753,6 @@ if (length(optical_variables) > 0) {
 }
 if (length(panel_species_variables) > 0) {
   message("---> Multi-panel species maps: ",paste(panel_species_variables,collapse=", "))
-  message("---> Panel validation: ",panel_validation_variable,
-          " using ",paste(panel_satellites,collapse="+"),
-          " from ",panel_satellite_path)
 }
 if (length(column_variables) > 0) {
   column_info <- sapply(column_variables,function(x) {
@@ -783,14 +783,12 @@ regions <- list(
   EUS       = c(-100,-60,32,48),
   europe    = c(-18,40,30,70),
   desert_aeronet = c(-180,180,-90,90),
-  ocean_aeronet  = c(-180,180,-90,90),
-  se_asia   = c(65,180,-23,50),
-
-  ## bias-focused rectangles for 4x3 validation maps
-  bias_india              = c(68, 90, 8, 31),
-  bias_china              = c(102, 124, 22, 42),
-  bias_europe             = c(-8, 25, 43, 58),
-  bias_gulf_of_guinea     = c(-18, 12, -2, 12),
-  bias_mexico_plume       = c(-118, -96, 14, 30),
-  bias_north_south_america= c(-82, -58, -5, 13)
+  ocean_aeronet = c(-180,180,-90,90),
+  se_asia = c(65,180,-23,50),
+  bias_india = c(68,90,8,31),
+  bias_china = c(102,124,22,42),
+  bias_europe = c(-8,25,43,58),
+  bias_gulf_of_guinea = c(-18,12,-2,12),
+  bias_mexico_plume = c(-118,-96,14,30),
+  bias_north_south_america = c(-82,-58,-5,13)
 )
